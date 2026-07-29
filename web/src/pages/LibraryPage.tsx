@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, type Book } from '../lib/api';
 import { useUploads } from '../components/library/useUploads';
@@ -30,6 +30,21 @@ export default function LibraryPage() {
     setBooks((list) => [book, ...(list ?? [])]);
   });
 
+  // Every dropped/picked file gets visible feedback — never a silent no-op
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const { accepted, skipped } = addFiles(files);
+      if (skipped > 0) {
+        setToast(
+          accepted > 0
+            ? `${skipped} file${skipped === 1 ? ' was' : 's were'} skipped — Quire reads ePUB and PDF files.`
+            : 'Only ePUB and PDF files are supported.'
+        );
+      }
+    },
+    [addFiles]
+  );
+
   useEffect(() => {
     document.title = 'Quire — Library';
     api.listBooks().then(setBooks).catch((e) => setLoadError(e.message));
@@ -55,7 +70,7 @@ export default function LibraryPage() {
       e.preventDefault();
       dragDepth.current = 0;
       setDragging(false);
-      if (e.dataTransfer?.files.length) addFiles(e.dataTransfer.files);
+      if (e.dataTransfer?.files.length) handleFiles(e.dataTransfer.files);
     };
     window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragover', onDragOver);
@@ -67,7 +82,7 @@ export default function LibraryPage() {
       window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
     };
-  }, [addFiles]);
+  }, [handleFiles]);
 
   const visibleBooks = useMemo(() => {
     if (!books) return [];
@@ -166,7 +181,7 @@ export default function LibraryPage() {
               multiple
               hidden
               onChange={(e) => {
-                if (e.target.files?.length) addFiles(e.target.files);
+                if (e.target.files?.length) handleFiles(e.target.files);
                 e.target.value = '';
               }}
             />

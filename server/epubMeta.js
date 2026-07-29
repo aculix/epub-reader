@@ -68,8 +68,18 @@ function resolveHref(opfDir, href) {
   return parts.join('/');
 }
 
+/** Raised when a file cannot possibly be read as an ePUB — surfaced to the uploader. */
+export class EpubValidationError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
 /**
  * Extract embedded metadata + cover image from an ePUB buffer.
+ * Throws EpubValidationError for files Quire will never be able to open
+ * (not a zip, missing package structure, DRM-encrypted content).
  * Returns { title, author, description, publisher, publishedDate, language, isbn, cover: { data, ext } | null }
  */
 export async function extractEpubMetadata(buffer, fallbackTitle) {
@@ -77,17 +87,56 @@ export async function extractEpubMetadata(buffer, fallbackTitle) {
     title: fallbackTitle, author: null, description: null, publisher: null,
     publishedDate: null, language: null, isbn: null, cover: null,
   };
-  const zip = await JSZip.loadAsync(buffer);
+
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new EpubValidationError(
+      'INVALID_EPUB',
+      'This file isn’t a readable ePUB — it may be corrupt, truncated, or not an ePUB at all.'
+    );
+  }
 
   const containerEntry = findEntry(zip, 'META-INF/container.xml');
-  if (!containerEntry) return out;
+  if (!containerEntry) {
+    throw new EpubValidationError(
+      'INVALID_EPUB',
+      'This ePUB is missing its package structure (META-INF/container.xml), so it can’t be opened.'
+    );
+  }
+
+  // Adobe/B&N-style DRM: encryption.xml covering content files (font
+  // obfuscation alone is fine and common)
+  const encEntry = findEntry(zip, 'META-INF/encryption.xml');
+  if (encEntry) {
+    try {
+      const encXml = await safeText(encEntry);
+      const uris = [...encXml.matchAll(/CipherReference[^>]*URI\s*=\s*"([^"]+)"/gi)].map((m) => m[1]);
+      const nonFont = uris.filter((u) => !/\.(ttf|otf|woff2?)(\?|#|$)/i.test(u));
+      if (nonFont.length > 0) {
+        throw new EpubValidationError(
+          'DRM_EPUB',
+          'This ePUB is protected by DRM, so Quire can’t open it. Upload a DRM-free copy instead.'
+        );
+      }
+    } catch (err) {
+      if (err instanceof EpubValidationError) throw err;
+      /* unreadable encryption.xml — don't block on it */
+    }
+  }
+
   const container = parser.parse(await safeText(containerEntry));
   const rootfiles = asArray(container?.container?.rootfiles?.rootfile);
   const opfPath = rootfiles[0]?.['@_full-path'];
-  if (!opfPath) return out;
+  if (!opfPath) {
+    throw new EpubValidationError('INVALID_EPUB', 'This ePUB has no package document listed, so it can’t be opened.');
+  }
 
   const opfEntry = findEntry(zip, opfPath);
-  if (!opfEntry) return out;
+  if (!opfEntry) {
+    throw new EpubValidationError('INVALID_EPUB', 'This ePUB’s package document is missing, so it can’t be opened.');
+  }
   const opf = parser.parse(await safeText(opfEntry));
   const pkg = opf?.package;
   if (!pkg) return out;

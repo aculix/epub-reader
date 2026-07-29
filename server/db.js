@@ -32,6 +32,12 @@ db.prepare(`
   )
 `).run();
 
+// Lightweight migration: content hash for duplicate-upload detection
+const bookColumns = db.prepare(`PRAGMA table_info(books)`).all().map((c) => c.name);
+if (!bookColumns.includes('file_hash')) {
+  db.prepare(`ALTER TABLE books ADD COLUMN file_hash TEXT`).run();
+}
+
 db.prepare(`
   CREATE TABLE IF NOT EXISTS progress (
     book_id    TEXT PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,

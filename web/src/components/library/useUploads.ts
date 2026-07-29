@@ -29,7 +29,8 @@ export function useUploads(onBookAdded: (book: Book) => void) {
 
   const addFiles = useCallback(
     (files: FileList | File[]) => {
-      const accepted = Array.from(files).filter((f) => /\.(epub|pdf)$/i.test(f.name));
+      const all = Array.from(files);
+      const accepted = all.filter((f) => /\.(epub|pdf)$/i.test(f.name));
       for (const file of accepted) {
         const key = `u${nextKey++}`;
         const displayTitle = file.name.replace(/\.(epub|pdf)$/i, '').replace(/[_.]+/g, ' ');
@@ -49,7 +50,7 @@ export function useUploads(onBookAdded: (book: Book) => void) {
           }
         })();
       }
-      return accepted.length;
+      return { accepted: accepted.length, skipped: all.length - accepted.length };
     },
     [patch, remove]
   );

@@ -2,10 +2,12 @@ import { Router } from 'express';
 import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import { nanoid } from 'nanoid';
 import db from './db.js';
 import { DATA_DIR, MAX_UPLOAD_MB } from './config.js';
-import { extractEpubMetadata } from './epubMeta.js';
+import { extractEpubMetadata, EpubValidationError } from './epubMeta.js';
 import { lookupMetadata, downloadCover } from './enrich.js';
 
 const router = Router();
@@ -26,6 +28,25 @@ const upload = multer({
 function titleFromFilename(name) {
   return path.basename(name).replace(/\.(epub|pdf)$/i, '').replace(/[_.]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
+
+async function hashFile(filePath) {
+  const hash = createHash('sha256');
+  await pipeline(fs.createReadStream(filePath), hash);
+  return hash.digest('hex');
+}
+
+// Backfill hashes for books uploaded before duplicate detection existed
+setTimeout(async () => {
+  const rows = db.prepare(`SELECT id, format FROM books WHERE file_hash IS NULL`).all();
+  for (const row of rows) {
+    try {
+      const p = path.join(BOOKS_DIR, `${row.id}.${row.format}`);
+      if (fs.existsSync(p)) {
+        db.prepare(`UPDATE books SET file_hash = ? WHERE id = ?`).run(await hashFile(p), row.id);
+      }
+    } catch { /* backfill is best-effort */ }
+  }
+}, 2000);
 
 function detectFormat(file) {
   const ext = path.extname(file.originalname).toLowerCase();
@@ -128,6 +149,13 @@ router.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'co
     const id = nanoid(12);
     const fallbackTitle = titleFromFilename(file.originalname);
 
+    // The same file twice is a mistake, not a request for a duplicate
+    const fileHash = await hashFile(file.path);
+    const existing = db.prepare(`SELECT title FROM books WHERE file_hash = ?`).get(fileHash);
+    if (existing) {
+      return res.status(409).json({ error: `“${existing.title}” is already in your library.` });
+    }
+
     let meta = {
       title: req.body.title?.trim() || fallbackTitle,
       author: req.body.author?.trim() || null,
@@ -140,7 +168,23 @@ router.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'co
         const extracted = await extractEpubMetadata(fs.readFileSync(file.path), fallbackTitle);
         meta = { ...meta, ...Object.fromEntries(Object.entries(extracted).filter(([, v]) => v != null)) };
       } catch (err) {
+        // Unopenable files are rejected with a reason the uploader can act on;
+        // mere metadata hiccups still upload with filename-derived defaults.
+        if (err instanceof EpubValidationError) {
+          return res.status(422).json({ error: err.message });
+        }
         console.warn(`[upload] ePUB metadata extraction failed: ${err.message}`);
+      }
+    }
+
+    if (format === 'pdf') {
+      // %PDF- magic may sit after a little junk, but must be near the start
+      const head = Buffer.alloc(1024);
+      const fd = fs.openSync(file.path, 'r');
+      fs.readSync(fd, head, 0, 1024, 0);
+      fs.closeSync(fd);
+      if (!head.includes('%PDF-')) {
+        return res.status(422).json({ error: 'This file isn’t a readable PDF — it may be corrupt or mislabelled.' });
       }
     }
 
@@ -161,10 +205,11 @@ router.post('/upload', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'co
     if (finalCover) saveCover(id, finalCover);
 
     db.prepare(`
-      INSERT INTO books (id, title, author, description, publisher, published_date, categories, isbn, language, page_count, format, file_name, file_size, has_cover, enriched)
-      VALUES (@id, @title, @author, @description, @publisher, @published_date, @categories, @isbn, @language, @page_count, @format, @file_name, @file_size, @has_cover, @enriched)
+      INSERT INTO books (id, title, author, description, publisher, published_date, categories, isbn, language, page_count, format, file_name, file_size, has_cover, enriched, file_hash)
+      VALUES (@id, @title, @author, @description, @publisher, @published_date, @categories, @isbn, @language, @page_count, @format, @file_name, @file_size, @has_cover, @enriched, @file_hash)
     `).run({
       id,
+      file_hash: fileHash,
       title: enrichedFields.title || meta.title,
       author: enrichedFields.author || meta.author,
       description: enrichedFields.description || meta.description,
