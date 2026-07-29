@@ -31,8 +31,9 @@ docker compose up -d
 
 Then open `http://localhost:3391` (or your server's address).
 
-Available tags: `latest` (newest build of `main`), `v1.2.3` / `v1.2` / `v1` for
-releases, and `sha-<commit>` to pin an exact build.
+Available tags: `latest` (newest build of `main`) and `v1.2.3` / `v1.2` / `v1`
+for releases. To pin an exact build, use its digest:
+`ghcr.io/aculix/epub-reader@sha256:…`
 
 To update:
 
