@@ -1,7 +1,33 @@
+# dependencies
 node_modules/
 web/node_modules/
+
+# build output
+dist/
 web/dist/
+
+# runtime data: uploaded books, covers, SQLite database
 data/
-*.log
-.DS_Store
+*.db
+*.db-shm
+*.db-wal
+
+# never commit book files (they're user content, often copyrighted)
+*.epub
+*.pdf
+
+# environment
 .env
+.env.*
+!.env.example
+
+# local tooling / editors
+.claude/
+.vscode/
+.idea/
+
+# logs & OS cruft
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
