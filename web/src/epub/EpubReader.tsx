@@ -77,6 +77,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   // Blocks next/prev while a chapter is loading, so holding an arrow key at a
   // boundary can't act on stale group/layout refs and skip chapters.
   const loadingChapterRef = useRef(false);
+  // Page group of each same-chapter TOC anchor, so the context label and TOC
+  // highlight track sub-sections within a chapter file, not just the file.
+  const anchorGroupsRef = useRef(new Map<number, number>());
 
   groupRef.current = group;
   spineRef.current = spineIndex;
@@ -236,9 +239,24 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     layoutRef.current = lay;
     setLayout(lay);
 
+    // Where does each TOC anchor of THIS chapter land, in page groups?
+    const rtlBook = epubRef.current?.pageProgression === 'rtl';
+    const groupForElement = (el: HTMLElement) => {
+      const rawCol = Math.floor(Math.max(0, el.offsetLeft - padLeft) / (colW + COL_GAP));
+      const colIdx = rtlBook ? Math.max(0, totalColumns - 1 - rawCol) : rawCol;
+      return clamp(Math.floor(colIdx / cols), 0, groups - 1);
+    };
+    anchorGroupsRef.current = new Map();
+    epubRef.current?.toc.forEach((entry, i) => {
+      if (entry.spineIndex !== spineRef.current) return;
+      const hash = entry.href.includes('#') ? entry.href.split('#')[1] : null;
+      const el = hash ? doc.getElementById(hash) : null;
+      anchorGroupsRef.current.set(i, el ? groupForElement(el as HTMLElement) : 0);
+    });
+
     // Resolve the pending target into a page group
     const t = pendingTarget.current;
-    const rtl = epubRef.current?.pageProgression === 'rtl';
+    const rtl = rtlBook;
     let g = 0;
     if (t.end) {
       g = groups - 1;
@@ -459,29 +477,33 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     return epub.progressFor(spineIndex, fraction);
   }, [epub, layout, group, spineIndex, bookMeta.progress]);
 
-  const contextLabel = useMemo(() => {
-    if (!epub) return null;
-    let label: string | null = null;
-    for (const entry of epub.toc) {
-      if (entry.spineIndex !== -1 && entry.spineIndex <= spineIndex) label = entry.label;
-      if (entry.spineIndex > spineIndex) break;
-    }
-    return label;
-  }, [epub, spineIndex]);
+  // Anchor-aware "where am I": sub-sections within a chapter file count too
+  const activeTocIdx = useMemo(() => {
+    if (!epub) return -1;
+    let idx = -1;
+    epub.toc.forEach((entry, i) => {
+      if (entry.spineIndex === -1) return;
+      if (entry.spineIndex < spineIndex) idx = i;
+      else if (entry.spineIndex === spineIndex && (anchorGroupsRef.current.get(i) ?? 0) <= group) idx = i;
+    });
+    return idx;
+    // `layout` re-triggers after each measure so anchor groups are fresh
+  }, [epub, spineIndex, group, layout]);
+
+  const contextLabel = useMemo(
+    () => (epub && activeTocIdx >= 0 ? epub.toc[activeTocIdx].label : null),
+    [epub, activeTocIdx]
+  );
 
   const toc: ShellTocEntry[] = useMemo(() => {
     if (!epub) return [];
-    let activeIdx = -1;
-    epub.toc.forEach((entry, i) => {
-      if (entry.spineIndex !== -1 && entry.spineIndex <= spineIndex) activeIdx = i;
-    });
     return epub.toc.map((entry, i) => ({
       label: entry.label,
       depth: entry.depth,
-      active: i === activeIdx,
+      active: i === activeTocIdx,
       onSelect: () => jumpToHref(entry.href),
     }));
-  }, [epub, spineIndex, jumpToHref]);
+  }, [epub, activeTocIdx, jumpToHref]);
 
   const atStart = spineIndex === 0 && group === 0;
   const atEnd = !!epub && spineIndex === epub.spine.length - 1 && !!layout && group >= layout.groups - 1;

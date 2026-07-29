@@ -967,6 +967,10 @@
 
   .wordmark span { display: none; }
 
+  /* icon-only Add button so the header never overflows */
+  .lib-header-actions .btn-label { display: none; }
+  .lib-header-actions .btn { padding: 9px 12px; }
+
   .lib-main { padding: 20px 16px 70px; }
 
   .shelf-grid {

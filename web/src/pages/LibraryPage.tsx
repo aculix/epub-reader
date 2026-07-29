@@ -156,8 +156,8 @@ export default function LibraryPage() {
           </div>
 
           <div className="lib-header-actions">
-            <button className="btn btn-primary" onClick={() => fileInput.current?.click()}>
-              <IconPlus style={{ width: 17, height: 17 }} /> Add books
+            <button className="btn btn-primary" onClick={() => fileInput.current?.click()} aria-label="Add books">
+              <IconPlus style={{ width: 17, height: 17 }} /> <span className="btn-label">Add books</span>
             </button>
             <input
               ref={fileInput}
