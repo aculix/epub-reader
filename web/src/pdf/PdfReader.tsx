@@ -174,6 +174,8 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
       if (e.defaultPrevented) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // A TOC/settings panel owns the keyboard while it's open
+      if (document.documentElement.dataset.quirePanel === 'open') return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); nextRef.current(); }
       else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prevRef.current(); }
     };

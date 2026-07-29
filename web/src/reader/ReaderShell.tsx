@@ -52,9 +52,19 @@ export default function ReaderShell({
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const chromeVisible = !focus;
+  const anyPanelOpen = tocOpen || settingsOpen;
   const tocListRef = useAutoHideScrollbar<HTMLDivElement>();
   const tocDrawerRef = useDialogFocus<HTMLElement>(tocOpen);
   const settingsRef = useDialogFocus<HTMLDivElement>(settingsOpen);
+
+  // Readers listen for paging keys on window; suppress that while a panel owns
+  // the keyboard, or Space/arrows turn pages instead of working the panel.
+  useEffect(() => {
+    document.documentElement.dataset.quirePanel = anyPanelOpen ? 'open' : '';
+    return () => {
+      delete document.documentElement.dataset.quirePanel;
+    };
+  }, [anyPanelOpen]);
 
   const closePanels = useCallback(() => {
     setTocOpen(false);
@@ -124,7 +134,9 @@ export default function ReaderShell({
       className={`reader ${chromeDark ? 'reader-chrome-dark' : ''} ${chromeVisible ? 'chrome-on' : 'chrome-off'} ${scrollsUnderChrome ? 'chrome-backdrop' : ''}`}
       style={{ background: stageBackground, '--reader-bg': stageBackground, ...themeVars } as React.CSSProperties}
     >
-      <div className="reader-stage-wrap">{children}</div>
+      {/* Panels are modal: the stage (and the chapter iframe inside it) leaves
+          the tab order and the accessibility tree while one is open. */}
+      <div className="reader-stage-wrap" inert={anyPanelOpen || undefined}>{children}</div>
 
       {/* edge page-turn buttons (desktop) */}
       <button
@@ -220,7 +232,8 @@ export default function ReaderShell({
               animate={{ x: 0 }}
               exit={{ x: '-104%' }}
               transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-              role="navigation"
+              role="dialog"
+              aria-modal="true"
               aria-label="Table of contents"
             >
               <div className="toc-head">

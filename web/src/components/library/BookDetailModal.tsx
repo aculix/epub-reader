@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import type { Book } from '../../lib/api';
@@ -18,13 +18,21 @@ interface Props {
 export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const descriptionRef = useAutoHideScrollbar<HTMLDivElement>();
-  const dialogRef = useDialogFocus<HTMLDivElement>(true);
+  // Flip on close rather than waiting for unmount, so focus returns to the
+  // trigger as soon as the dialog is dismissed — not after the exit animation.
+  const [closing, setClosing] = useState(false);
+  const dialogRef = useDialogFocus<HTMLDivElement>(!closing);
+
+  const close = useCallback(() => {
+    setClosing(true);
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [close]);
 
   const facts: Array<[string, string | null]> = [
     ['Published', formatYear(book.publishedDate)],
@@ -42,7 +50,7 @@ export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: 
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
-      onClick={onClose}
+      onClick={close}
     >
       <motion.div
         ref={dialogRef}
@@ -56,7 +64,7 @@ export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: 
         transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button className="icon-btn modal-close" onClick={onClose} aria-label="Close">
+        <button className="icon-btn modal-close" onClick={close} aria-label="Close">
           <IconClose />
         </button>
 

@@ -601,6 +601,8 @@ function handleKey(e: KeyboardEvent, next: () => void, prev: () => void, rtl = f
   if (e.defaultPrevented) return;
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // A TOC/settings panel owns the keyboard while it's open
+  if (document.documentElement.dataset.quirePanel === 'open') return;
   switch (e.key) {
     case 'ArrowRight': // spatial: mirrored for right-to-left books
       e.preventDefault();
