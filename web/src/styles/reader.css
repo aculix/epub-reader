@@ -52,8 +52,9 @@
 .page-inner {
   position: absolute;
   inset: 0;
-  /* A curl uses one shallow perspective transform on this stable surface.
-     No opacity, backface culling, or edge-on rotation is involved. */
+  /* A curl translates and 2D-rotates this stable surface. Strictly affine, so
+     the compositor re-orients one raster instead of re-shaping text per frame.
+     No perspective, opacity, backface culling, or edge-on rotation. */
   will-change: transform;
 }
 
@@ -65,14 +66,19 @@
   border: none;
 }
 
-/* The lit edge of the lifted sheet. Narrow and mostly translucent so it reads
-   as paper catching light without replacing the text with a blank flap. */
+/*
+ * The cut edge of the lifted sheet, catching light. The ramp is MONOTONIC —
+ * brightest at the crease, fading back into the page. It previously ran
+ * dark -> light -> bright -> dark across 22px, which is how you shade a
+ * cylinder, so the turning page's edge looked rolled into a tube.
+ * Keep the width in step with FOLD_W in pageCurl.ts.
+ */
 .turn-flap {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 22px;
+  width: 10px;
   z-index: 5;
   pointer-events: none;
   opacity: 0;
@@ -80,11 +86,19 @@
   will-change: transform, opacity;
   background-image: linear-gradient(
     to right,
-    rgba(20, 13, 4, 0.07) 0%,
-    color-mix(in srgb, var(--bg) 38%, transparent) 34%,
-    color-mix(in srgb, var(--bg) 72%, white 28%) 48%,
-    color-mix(in srgb, var(--bg) 62%, white 38%) 54%,
-    rgba(20, 13, 4, 0.04) 100%
+    color-mix(in srgb, var(--bg) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 90%, white 34%) 62%,
+    color-mix(in srgb, var(--bg) 84%, white 48%) 100%
+  );
+}
+
+/* Mirrored turn: the cut edge faces the other way, so the ramp does too. */
+.turn-flap[data-side='left'] {
+  background-image: linear-gradient(
+    to left,
+    color-mix(in srgb, var(--bg) 100%, transparent) 0%,
+    color-mix(in srgb, var(--bg) 90%, white 34%) 62%,
+    color-mix(in srgb, var(--bg) 84%, white 48%) 100%
   );
 }
 

@@ -4,16 +4,19 @@
  * The reference has two importantly different surfaces:
  *   - the destination page lies flat and never moves;
  *   - the page being turned is lifted at its trailing edge, then travels over
- *     the destination. Its text moves with the paper and is foreshortened in
- *     perspective (top and bottom lines converge toward the vertical centre).
+ *     the destination. Its text moves with the paper.
  *
- * The outer page layers still never transform. The moving sheet remains inside
- * the proven clip/counter-translate structure: the clip edge follows the
- * gesture immediately, while a partial counter-translate lets the body of the
- * paper lag during the initial lift and catch up during the turn. The only
- * deformation is a shallow rotateY on that clipped inner surface. It never
- * approaches edge-on, never fades, and never uses backface culling — avoiding
- * the expensive full-layer swing which made the iframe flicker.
+ * The outer page layers never transform. The moving sheet stays inside the
+ * proven clip/counter-translate structure: the clip edge follows the gesture
+ * immediately, while a partial counter-translate lets the body of the paper lag
+ * during the initial lift and catch up as it is carried. That differential is
+ * what separates lifting a sheet from sliding a card, and it costs nothing —
+ * every per-frame transform here is affine. See innerTransform.
+ *
+ * What is deliberately NOT reproduced: the reference foreshortens the lifted
+ * sheet in perspective, so its lines splay away from the vertical centre. Play
+ * Books can do that because its page is already a GPU texture. Ours is a live
+ * document in an iframe, and warping it per frame re-rasterises every glyph.
  *
  * Progress runs 0 → 1 for both directions. A forward turn lifts the outgoing
  * sheet from flat to gone; a backward turn plays that same path in reverse,
@@ -37,36 +40,40 @@ export interface TurnElements {
 
 const SHADE_W = 72;
 /** Width of the lit paper edge. Keep in step with .turn-flap in reader.css. */
-const FOLD_W = 22;
-/** The reference stays face-on enough to remain readable throughout. */
-const MAX_TILT_DEG = 34;
-/** Camera distance as a multiple of the viewport width. */
-const PERSPECTIVE_RATIO = 2.5;
-/** Avoid an over-aggressive projection on narrow phone viewports. */
-const MIN_PERSPECTIVE_PX = 1100;
+const FOLD_W = 10;
+/**
+ * A 2D rotation turns every line by the SAME angle instead of splaying them, so
+ * it has to stay small — past about 8deg the sheet reads as crooked rather than
+ * lifted. This buys a tilt cue for free; see innerTransform for why it must
+ * remain a 2D rotate.
+ */
+const MAX_TILT_DEG = 5;
 /**
  * The page body initially lags the hand: first the edge lifts, then the sheet
  * is carried. A power above 1 gives that two-stage travel without a branch.
  */
-const CARRY_EXPONENT = 1.45;
+const CARRY_EXPONENT = 1.3;
 /**
- * Leave a sliver of the iframe's compositor surface on-screen even after its
- * clip closes. Browsers are liable to throttle a fully off-screen iframe and
- * repaint it when a slow drag reverses; the closed clip hides this guard.
+ * The sheet stops short of sweeping its full width, so a sliver of the iframe's
+ * compositor surface stays on-screen behind the closed clip. Browsers are liable
+ * to throttle a fully off-screen iframe and repaint it when a slow drag
+ * reverses. This is a flat scale rather than a term that only bites at the end:
+ * subtracting e.g. lift^8 collapses the sheet's velocity over the last 20% of
+ * the turn, and text braking against a crease that keeps moving is exactly what
+ * makes the page look like it is rolling up into a tube.
  */
-const RASTER_GUARD = 0.14;
+const TRAVEL_CAP = 0.88;
 
 interface Geometry {
   clipTx: number;
   innerTx: number;
   /** Pivot in the inner surface's own coordinate space */
   originX: number;
-  /** Lit edge position (the band is centred on it) */
+  /** Lit edge position (the band sits just inside the crease) */
   edgeTx: number;
   shadeTx: number;
-  /** Vertical-axis tilt of the moving sheet, in degrees */
+  /** In-plane rotation of the moving sheet, in degrees */
   tilt: number;
-  perspective: number;
   edgeOpacity: number;
   shadeOpacity: number;
 }
@@ -91,10 +98,7 @@ function geometryFor(p: number, width: number, phase: TurnPhase, mirror: boolean
   const t = Math.min(1, Math.max(0, p));
   const lift = phase === 'lift' ? t : 1 - t;
   const swept = width * lift;
-  const carried = width * (
-    Math.pow(lift, CARRY_EXPONENT) -
-    RASTER_GUARD * Math.pow(lift, 8)
-  );
+  const carried = width * TRAVEL_CAP * Math.pow(lift, CARRY_EXPONENT);
   const direction = mirror ? 1 : -1;
 
   // The clip edge travels with the hand. The page body travels less at first,
@@ -109,9 +113,10 @@ function geometryFor(p: number, width: number, phase: TurnPhase, mirror: boolean
   const edge = mirror ? swept : width - swept;
   const originX = edge - pageTx;
 
-  // A vertical-axis perspective tilt is what creates the reference's tell:
-  // upper lines slope toward the centre one way, lower lines the other way.
-  const tiltMag = MAX_TILT_DEG * Math.sin(lift * Math.PI / 2);
+  // The sheet is flat at rest, most off-axis while it is being carried, and flat
+  // again by the time it leaves — so the tilt has to vanish at BOTH ends or an
+  // interrupted drag snaps a crooked page back into place.
+  const tiltMag = MAX_TILT_DEG * Math.sin(lift * Math.PI);
   const edgeEnvelope = Math.min(1, lift * 12, (1 - lift) * 20);
   const shadeEnvelope = Math.min(1, lift * 5, (1 - lift) * 10);
 
@@ -119,10 +124,11 @@ function geometryFor(p: number, width: number, phase: TurnPhase, mirror: boolean
     clipTx,
     innerTx,
     originX,
-    edgeTx: edge - FOLD_W / 2,
+    // The lit edge sits just inside the crease rather than straddling it, so the
+    // shadow on the far side is the only thing beyond the fold.
+    edgeTx: mirror ? edge : edge - FOLD_W,
     shadeTx: mirror ? edge - SHADE_W : edge,
     tilt: mirror ? -tiltMag : tiltMag,
-    perspective: Math.max(MIN_PERSPECTIVE_PX, width * PERSPECTIVE_RATIO),
     edgeOpacity: Math.max(0, edgeEnvelope),
     shadeOpacity: Math.max(0, shadeEnvelope) * 0.72,
   };
@@ -132,10 +138,29 @@ function geometryFor(p: number, width: number, phase: TurnPhase, mirror: boolean
  * Bake the moving pivot into the matrix so transform-origin itself never
  * animates. With CSS transform-origin fixed at left centre, these translations
  * are exactly equivalent to pivoting at g.originX.
+ *
+ * The rotation MUST stay a 2D `rotate`. This element contains the live chapter
+ * iframe, and the difference between an affine and a projective transform here
+ * is the difference between a smooth turn and a flickering one:
+ *
+ *   rotate()                 preserves scale, so the text is rastered once and
+ *                            the compositor just re-orients that texture.
+ *   perspective() rotateY()  is non-affine — the effective scale varies across
+ *                            the layer and changes every frame, so the browser
+ *                            re-shapes and re-rasters all the text per frame.
+ *                            On a slow drag that reads as flicker.
+ *
+ * A projective warp would reproduce the reference's line-splay exactly, but no
+ * amount of tuning makes re-rasterising a document per frame cheap, and the
+ * iframe cannot be snapshotted to a texture we could warp instead.
+ *
+ * Rotating inside the clip would normally uncover wedges at the clip's corners;
+ * it does not show here because .page-clip is painted opaque in the page colour,
+ * so those wedges are the same colour as the paper.
  */
 function innerTransform(g: Geometry): string {
   return `translate3d(${g.innerTx + g.originX}px, 0, 0) ` +
-    `perspective(${g.perspective}px) rotateY(${g.tilt}deg) ` +
+    `rotate(${g.tilt}deg) ` +
     `translate3d(${-g.originX}px, 0, 0)`;
 }
 
@@ -144,6 +169,7 @@ export function prepareTurn(el: TurnElements, mirror: boolean, mode: TurnMode) {
   el.overLayer.style.pointerEvents = 'none';
   el.inner.style.transformOrigin = 'left center';
   el.shade.dataset.side = mirror ? 'left' : 'right';
+  el.flap.dataset.side = mirror ? 'left' : 'right';
   // Explicit 'block': setting '' falls back to the stylesheet's display:none.
   const showPaper = mode === 'curl' ? 'block' : 'none';
   el.flap.style.display = showPaper;
