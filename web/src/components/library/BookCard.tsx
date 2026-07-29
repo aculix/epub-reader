@@ -107,14 +107,14 @@ export default function BookCard({ book, index, onDetails, onRefresh, onDelete }
           {menuOpen && (
             <motion.div
               className="menu-pop"
-              role="menu"
+              aria-label={`Options for ${book.title}`}
               initial={{ opacity: 0, y: 6, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
             >
-              <button role="menuitem" onClick={() => { setMenuOpen(false); onDetails(book); }}><IconInfo /> About this book</button>
-              <button role="menuitem" onClick={() => { setMenuOpen(false); onRefresh(book); }}><IconRefresh /> Refresh metadata</button>
-              <button role="menuitem" className="danger" onClick={() => { setMenuOpen(false); onDelete(book); }}><IconTrash /> Remove</button>
+              <button onClick={() => { setMenuOpen(false); onDetails(book); }}><IconInfo /> About this book</button>
+              <button onClick={() => { setMenuOpen(false); onRefresh(book); }}><IconRefresh /> Refresh metadata</button>
+              <button className="danger" onClick={() => { setMenuOpen(false); onDelete(book); }}><IconTrash /> Remove</button>
             </motion.div>
           )}
         </div>

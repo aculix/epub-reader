@@ -46,7 +46,7 @@ export const READER_THEMES: Record<ReaderTheme, ReaderThemeSpec> = {
     bg: '#f9f5ec', stage: '#eee7d8', text: '#26201a', faint: '#8d8271', accent: '#b04f2c', label: 'Paper',
     vars: {
       '--bg': '#f9f5ec', '--bg-deep': '#eee7d8', '--surface': '#fffdf8', '--surface-2': '#f4efe4',
-      '--ink': '#26201a', '--ink-2': '#5f574a', '--ink-3': '#8d8271',
+      '--ink': '#26201a', '--ink-2': '#5f574a', '--ink-3': '#776c57',
       '--line': 'rgba(64,50,28,0.15)', '--line-soft': 'rgba(64,50,28,0.08)',
       '--accent': '#b04f2c', '--accent-strong': '#93401f', '--accent-soft': '#f3e2d6', '--on-accent': '#fdf6ec',
       ...LIGHT_SHADOWS,
@@ -56,7 +56,7 @@ export const READER_THEMES: Record<ReaderTheme, ReaderThemeSpec> = {
     bg: '#f3e6cd', stage: '#e7d6b6', text: '#46351f', faint: '#967f5d', accent: '#9c4a20', label: 'Sepia',
     vars: {
       '--bg': '#f3e6cd', '--bg-deep': '#e7d6b6', '--surface': '#faf0dc', '--surface-2': '#eee0c2',
-      '--ink': '#46351f', '--ink-2': '#6f5c40', '--ink-3': '#967f5d',
+      '--ink': '#46351f', '--ink-2': '#6f5c40', '--ink-3': '#6b5734',
       '--line': 'rgba(70,53,31,0.18)', '--line-soft': 'rgba(70,53,31,0.09)',
       '--accent': '#9c4a20', '--accent-strong': '#7e3a17', '--accent-soft': '#ecd9bd', '--on-accent': '#fdf4e3',
       ...LIGHT_SHADOWS,
@@ -66,7 +66,7 @@ export const READER_THEMES: Record<ReaderTheme, ReaderThemeSpec> = {
     bg: '#181512', stage: '#100e0b', text: '#d9d0bf', faint: '#7a7160', accent: '#d97e50', label: 'Dusk',
     vars: {
       '--bg': '#181512', '--bg-deep': '#100e0b', '--surface': '#211c15', '--surface-2': '#2a241b',
-      '--ink': '#ede4d3', '--ink-2': '#b0a48e', '--ink-3': '#7c7261',
+      '--ink': '#ede4d3', '--ink-2': '#b0a48e', '--ink-3': '#a2967f',
       '--line': 'rgba(237,228,211,0.14)', '--line-soft': 'rgba(237,228,211,0.07)',
       '--accent': '#d97e50', '--accent-strong': '#e69268', '--accent-soft': '#3a281d', '--on-accent': '#221207',
       ...DARK_SHADOWS,

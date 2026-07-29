@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import type { Book } from '../../lib/api';
 import { formatBytes, formatYear } from '../../lib/format';
 import { useAutoHideScrollbar } from '../../lib/useAutoHideScrollbar';
+import { useDialogFocus } from '../../lib/useDialogFocus';
 import { CoverImage } from './BookCard';
 import { IconClose, IconRefresh, IconTrash } from '../Icons';
 
@@ -17,6 +18,7 @@ interface Props {
 export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const descriptionRef = useAutoHideScrollbar<HTMLDivElement>();
+  const dialogRef = useDialogFocus<HTMLDivElement>(true);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -43,6 +45,7 @@ export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: 
       onClick={onClose}
     >
       <motion.div
+        ref={dialogRef}
         className="detail-modal"
         role="dialog"
         aria-modal="true"

@@ -123,13 +123,13 @@
   border-radius: 3px;
   background: var(--accent, #b04f2c);
   opacity: 0.8;
-  animation: loader-bounce 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: loader-pulse 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 .book-loader span:nth-child(2) { height: 42px; animation-delay: 0.14s; }
 .book-loader span:nth-child(3) { height: 27px; animation-delay: 0.28s; }
 
-@keyframes loader-bounce {
+@keyframes loader-pulse {
   0%, 100% { transform: scaleY(1); }
   45% { transform: scaleY(0.65); }
 }
@@ -237,7 +237,7 @@
 }
 
 .reader-chrome-dark .reader-book-title { color: #ece4d3; }
-.reader-chrome-dark .reader-context { color: #8d8371; }
+.reader-chrome-dark .reader-context { color: #a89d88; }
 .reader-chrome-dark .icon-btn { color: #b0a48e; }
 .reader-chrome-dark .icon-btn:hover { background: rgba(236, 228, 211, 0.1); color: #ece4d3; }
 
@@ -330,7 +330,7 @@
   padding: 0 2px;
 }
 
-.reader-chrome-dark .reader-bottom-info { color: #8d8371; }
+.reader-chrome-dark .reader-bottom-info { color: #a89d88; }
 
 .reader-percent {
   font-weight: 700;
@@ -371,7 +371,7 @@
 
 .page-edge-btn:disabled { opacity: 0 !important; cursor: default; }
 
-.reader-chrome-dark .page-edge-btn { color: #8d8371; }
+.reader-chrome-dark .page-edge-btn { color: #a89d88; }
 .reader-chrome-dark .page-edge-btn:hover:not(:disabled) { color: #e69268; }
 
 /* ---------- TOC drawer ---------- */
@@ -504,7 +504,7 @@
   flex: none;
 }
 
-.reader-chrome-dark .settings-label { color: #8d8371; }
+.reader-chrome-dark .settings-label { color: #a89d88; }
 
 .theme-swatches {
   display: flex;

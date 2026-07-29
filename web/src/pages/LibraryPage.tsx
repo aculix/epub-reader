@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, type Book } from '../lib/api';
+import { useDialogFocus } from '../lib/useDialogFocus';
 import { useUploads } from '../components/library/useUploads';
 import BookCard from '../components/library/BookCard';
 import UploadCard from '../components/library/UploadCard';
@@ -25,10 +26,29 @@ export default function LibraryPage() {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+  const confirmRef = useDialogFocus<HTMLDivElement>(!!confirmDelete);
+  // Dialogs render in-tree, so the page chrome behind them goes inert
+  const modalOpen = !!selected || !!confirmDelete;
+
+  // Screen-reader narration for the upload lifecycle (stable polite region)
+  const [announce, setAnnounce] = useState('');
+  const announcedStages = useRef(new Map<string, string>());
 
   const { uploads, addFiles, dismissUpload } = useUploads((book) => {
     setBooks((list) => [book, ...(list ?? [])]);
+    setAnnounce(`${book.title} added to your library`);
   });
+
+  useEffect(() => {
+    for (const u of uploads) {
+      const prev = announcedStages.current.get(u.key);
+      if (prev === u.stage) continue;
+      announcedStages.current.set(u.key, u.stage);
+      if (!prev) setAnnounce(`Uploading ${u.displayTitle}`);
+      else if (u.stage === 'cataloguing') setAnnounce(`Fetching book info for ${u.displayTitle}`);
+      else if (u.stage === 'error') setAnnounce(`Upload failed for ${u.displayTitle}. ${u.error ?? ''}`);
+    }
+  }, [uploads]);
 
   // Every dropped/picked file gets visible feedback — never a silent no-op
   const handleFiles = useCallback(
@@ -112,7 +132,8 @@ export default function LibraryPage() {
       setBooks((list) => (list ?? []).map((b) => (b.id === updated.id ? updated : b)));
       setSelected((s) => (s?.id === updated.id ? updated : s));
     } catch (err) {
-      setToast(`Couldn’t refresh metadata: ${err instanceof Error ? err.message : 'unknown error'}`);
+      void err;
+      setToast('Couldn’t fetch book info. Check that the server is reachable and try again.');
     }
   };
 
@@ -122,7 +143,8 @@ export default function LibraryPage() {
       setBooks((list) => (list ?? []).filter((b) => b.id !== book.id));
       setSelected((s) => (s?.id === book.id ? null : s));
     } catch (err) {
-      setToast(`Couldn’t remove the book: ${err instanceof Error ? err.message : 'unknown error'}`);
+      void err;
+      setToast('Couldn’t remove the book. Check that the server is reachable and try again.');
     } finally {
       setConfirmDelete(null);
     }
@@ -152,7 +174,7 @@ export default function LibraryPage() {
 
   return (
     <div className="library">
-      <header className="lib-header">
+      <header className="lib-header" inert={modalOpen || undefined}>
         <div className="lib-header-inner">
           <a className="wordmark" href="/">
             <img src="/quire.svg" alt="" width={30} height={30} />
@@ -189,7 +211,7 @@ export default function LibraryPage() {
         </div>
       </header>
 
-      <main className="lib-main">
+      <main className="lib-main" inert={modalOpen || undefined}>
         {loadError && (
           <div className="lib-error">Couldn’t reach the Quire server: {loadError}</div>
         )}
@@ -281,6 +303,8 @@ export default function LibraryPage() {
         )}
       </main>
 
+      <div className="sr-only" role="status">{announce}</div>
+
       <AnimatePresence>{dragging && <DropOverlay />}</AnimatePresence>
 
       <AnimatePresence>
@@ -318,8 +342,10 @@ export default function LibraryPage() {
             onClick={() => setConfirmDelete(null)}
           >
             <motion.div
+              ref={confirmRef}
               className="confirm-modal"
               role="alertdialog"
+              aria-modal="true"
               aria-label={`Remove ${confirmDelete.title}`}
               initial={{ opacity: 0, y: 24, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

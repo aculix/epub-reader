@@ -291,7 +291,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
           }
         }}
       >
-        {!doc && <div className="reader-loading"><div className="book-loader"><span /><span /><span /></div></div>}
+        {!doc && <div className="reader-loading"><div className="book-loader" role="status" aria-label="Opening book"><span /><span /><span /></div></div>}
         {doc && stageSize && (
           <AnimatePresence initial={false}>
             <motion.div

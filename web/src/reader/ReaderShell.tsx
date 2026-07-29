@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconFullscreen, IconFullscreenExit, IconType } from '../components/Icons';
 import { useAutoHideScrollbar } from '../lib/useAutoHideScrollbar';
+import { useDialogFocus } from '../lib/useDialogFocus';
 
 export interface ShellTocEntry {
   label: string;
@@ -52,6 +53,8 @@ export default function ReaderShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const chromeVisible = !focus;
   const tocListRef = useAutoHideScrollbar<HTMLDivElement>();
+  const tocDrawerRef = useDialogFocus<HTMLElement>(tocOpen);
+  const settingsRef = useDialogFocus<HTMLDivElement>(settingsOpen);
 
   const closePanels = useCallback(() => {
     setTocOpen(false);
@@ -211,6 +214,7 @@ export default function ReaderShell({
               onClick={closePanels}
             />
             <motion.aside
+              ref={tocDrawerRef}
               className="toc-drawer"
               initial={{ x: '-104%' }}
               animate={{ x: 0 }}
@@ -250,6 +254,7 @@ export default function ReaderShell({
               onClick={closePanels}
             />
             <motion.div
+              ref={settingsRef}
               className="settings-pop"
               initial={{ opacity: 0, y: -10, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}

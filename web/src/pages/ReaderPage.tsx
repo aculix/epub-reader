@@ -34,13 +34,13 @@ export default function ReaderPage() {
   if (!book) {
     return (
       <div className="reader-error" aria-busy="true">
-        <div className="book-loader"><span /><span /><span /></div>
+        <div className="book-loader" role="status" aria-label="Opening book"><span /><span /><span /></div>
       </div>
     );
   }
 
   return (
-    <Suspense fallback={<div className="reader-error"><div className="book-loader"><span /><span /><span /></div></div>}>
+    <Suspense fallback={<div className="reader-error"><div className="book-loader" role="status" aria-label="Opening book"><span /><span /><span /></div></div>}>
       {book.format === 'epub' ? <EpubReader book={book} /> : <PdfReader book={book} />}
     </Suspense>
   );

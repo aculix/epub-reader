@@ -16,7 +16,7 @@
   /* ink */
   --ink: #231d12;
   --ink-2: #605644;
-  --ink-3: #998d79;
+  --ink-3: #776c57; /* 4.59:1 on --bg so small secondary text stays legible */
 
   /* voice */
   --accent: #b04f2c;
@@ -63,6 +63,7 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   transition: background-color 0.45s ease, color 0.45s ease;
 }
@@ -196,6 +197,19 @@ input, select, textarea {
 .icon-btn svg {
   width: 20px;
   height: 20px;
+}
+
+/* visually hidden, still announced by screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- auto-hiding scrollbar ----------

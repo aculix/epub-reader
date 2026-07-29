@@ -182,6 +182,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       #quire-root a, #quire-root a * { color: ${theme.accent} !important; }
       #quire-root a[data-quire-href] { cursor: pointer; text-decoration: underline; }
       ::selection { background: ${theme.accent}44; }
+      @media (prefers-reduced-motion: reduce) {
+        #quire-root { transition: none !important; }
+      }
     `;
   }, [stageSize, geometry, settings, theme]);
 
@@ -216,7 +219,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     const lay = layoutRef.current;
     if (!root || !lay) return;
     const sign = epubRef.current?.pageProgression === 'rtl' ? 1 : -1;
-    root.style.transition = animate ? `transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : 'none';
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    root.style.transition = animate && !reduceMotion ? `transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : 'none';
     root.style.transform = `translateX(${sign * g * lay.stepW}px)`;
     if (!animate) {
       // force reflow so the next transition animates from here
@@ -643,7 +647,7 @@ function useStageSize(ref: React.RefObject<HTMLDivElement | null>) {
 
 function BookLoader() {
   return (
-    <div className="book-loader" aria-label="Opening book">
+    <div className="book-loader" role="status" aria-label="Opening book">
       <span /><span /><span />
     </div>
   );
