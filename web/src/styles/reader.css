@@ -62,43 +62,29 @@
   border: none;
 }
 
-/* The turned-over portion of the sheet: the back of the paper, lying on the
-   part still flat on the surface. Scaled from its left edge, so its gradient
-   runs from the fold outward. */
+/* The lit crease where the sheet bends. Narrow and translucent: the pages on
+   either side stay readable — real paper shows a highlight at the fold, it
+   does not blank out the text around it. */
 .turn-flap {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30px;
   z-index: 5;
   pointer-events: none;
   opacity: 0;
   display: none;
-  transform-origin: left center;
-  box-shadow: 0 0 22px rgba(20, 13, 4, 0.16);
-}
-
-/* Paper is never perfectly flat as it folds: a little shading toward the fold
-   and a bright edge where it catches the light. */
-.turn-flap[data-side='right'] {
+  will-change: transform, opacity;
   background-image: linear-gradient(
     to right,
-    rgba(20, 13, 4, 0.1) 0%,
-    rgba(20, 13, 4, 0.02) 40%,
-    rgba(255, 255, 255, 0.5) 97%,
-    rgba(255, 255, 255, 0.75) 100%
+    rgba(20, 13, 4, 0.07) 0%,
+    rgba(255, 255, 255, 0.85) 45%,
+    rgba(255, 255, 255, 0.95) 55%,
+    rgba(20, 13, 4, 0.05) 100%
   );
 }
 
-.turn-flap[data-side='left'] {
-  background-image: linear-gradient(
-    to left,
-    rgba(20, 13, 4, 0.1) 0%,
-    rgba(20, 13, 4, 0.02) 40%,
-    rgba(255, 255, 255, 0.5) 97%,
-    rgba(255, 255, 255, 0.75) 100%
-  );
-}
-
-/* Shadow the fold drops on the freshly uncovered page */
 .turn-shade {
   position: absolute;
   top: 0;

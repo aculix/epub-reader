@@ -40,14 +40,20 @@ export interface TurnElements {
 }
 
 const SHADE_W = 64;
+/** Width of the lit crease where the sheet bends. */
+const FOLD_W = 30;
+/** How far the settling page is still tilted when the fold starts out. */
+const MAX_TILT_DEG = 3.5;
 
 interface Geometry {
   fold: number;
   clipTx: number;
   innerTx: number;
-  flapTx: number;
-  flapScale: number;
+  /** Crease position (the band is centred on the fold) */
+  foldTx: number;
   shadeTx: number;
+  /** Tilt of the page still settling out of the fold, in degrees */
+  tilt: number;
 }
 
 /**
@@ -56,17 +62,17 @@ interface Geometry {
  */
 function geometryFor(p: number, width: number, fromRight: boolean): Geometry {
   const t = Math.min(1, Math.max(0, p));
+  // The sheet is still bent early in the turn and lies flat by the end
+  const tiltMag = MAX_TILT_DEG * (1 - t);
   if (fromRight) {
     const fold = width * (1 - t);
     return {
       fold,
       clipTx: fold,
       innerTx: -fold,
-      // The turned portion mirrors about the fold, so it grows leftward as the
-      // fold advances, covering the part of the old page still lying flat.
-      flapTx: width * (1 - 2 * t),
-      flapScale: t,
+      foldTx: fold - FOLD_W / 2,
       shadeTx: fold,
+      tilt: -tiltMag,
     };
   }
   const fold = width * t;
@@ -74,19 +80,15 @@ function geometryFor(p: number, width: number, fromRight: boolean): Geometry {
     fold,
     clipTx: fold - width,
     innerTx: width - fold,
-    flapTx: fold,
-    flapScale: t,
+    foldTx: fold - FOLD_W / 2,
     shadeTx: fold - SHADE_W,
+    tilt: tiltMag,
   };
 }
 
 export function prepareTurn(el: TurnElements, fromRight: boolean, mode: TurnMode) {
   el.overLayer.style.zIndex = '3';
   el.overLayer.style.pointerEvents = 'none';
-  el.flap.style.transformOrigin = 'left center';
-  // The flap's gradient and the shade's direction depend on which edge the
-  // fold travels from.
-  el.flap.dataset.side = fromRight ? 'right' : 'left';
   el.shade.dataset.side = fromRight ? 'right' : 'left';
   // Explicit 'block': setting '' falls back to the stylesheet's display:none
   const showPaper = mode === 'curl' ? 'block' : 'none';
@@ -113,9 +115,11 @@ export function setTurnProgress(
 
   const g = geometryFor(t, width, fromRight);
   el.clip.style.transform = `translate3d(${g.clipTx}px, 0, 0)`;
-  el.inner.style.transform = `translate3d(${g.innerTx}px, 0, 0)`;
-  el.flap.style.transform = `translate3d(${g.flapTx}px, 0, 0) scaleX(${Math.max(0.0001, g.flapScale)})`;
-  el.flap.style.opacity = t > 0.02 ? '1' : '0';
+  // Anchor the bend at the crease, so the page hinges out of the fold
+  el.inner.style.transformOrigin = `${g.fold}px center`;
+  el.inner.style.transform = `translate3d(${g.innerTx}px, 0, 0) rotate(${g.tilt}deg)`;
+  el.flap.style.transform = `translate3d(${g.foldTx}px, 0, 0)`;
+  el.flap.style.opacity = t > 0.01 && t < 0.995 ? '1' : '0';
   el.shade.style.transform = `translate3d(${g.shadeTx}px, 0, 0)`;
   el.shade.style.opacity = String(Math.min(1, t * 4) * 0.85);
 }
@@ -125,6 +129,7 @@ export function clearTurn(el: TurnElements) {
   el.overLayer.style.pointerEvents = '';
   el.clip.style.transform = '';
   el.inner.style.transform = '';
+  el.inner.style.transformOrigin = '';
   el.flap.style.transform = '';
   el.flap.style.opacity = '0';
   el.flap.style.display = 'none';
@@ -170,10 +175,13 @@ export function runTurn(
     }
     const g = geometryFor(t, width, fromRight);
     clip.push({ transform: `translate3d(${g.clipTx}px, 0, 0)` });
-    inner.push({ transform: `translate3d(${g.innerTx}px, 0, 0)` });
+    inner.push({
+      transformOrigin: `${g.fold}px center`,
+      transform: `translate3d(${g.innerTx}px, 0, 0) rotate(${g.tilt}deg)`,
+    });
     flap.push({
-      transform: `translate3d(${g.flapTx}px, 0, 0) scaleX(${Math.max(0.0001, g.flapScale)})`,
-      opacity: t > 0.02 ? 1 : 0,
+      transform: `translate3d(${g.foldTx}px, 0, 0)`,
+      opacity: t > 0.01 && t < 0.995 ? 1 : 0,
     });
     shade.push({
       transform: `translate3d(${g.shadeTx}px, 0, 0)`,
