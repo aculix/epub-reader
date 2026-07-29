@@ -16,6 +16,10 @@ data/
 *.epub
 *.pdf
 
+# local design/animation reference recordings
+*.mp4
+*.mov
+
 # environment
 .env
 .env.*
@@ -23,6 +27,7 @@ data/
 
 # local tooling / editors
 .claude/
+.impeccable.md
 .vscode/
 .idea/
 

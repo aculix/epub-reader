@@ -26,21 +26,22 @@
   transition: background-color 0.4s ease;
 }
 
-/* No perspective: nothing rotates any more. The turn is a moving fold. */
+/* Perspective is local to the lifted inner sheet. The wrapper and both page
+   layers stay flat, fixed, and out of the iframe compositing path. */
 .epub-frame-wrap {
   position: absolute;
   inset: 0;
 }
 
-/* The page layer never transforms; only the clip window inside it sweeps. */
+/* Page layers never transform. Curl motion is isolated to their clip/inner
+   pair so the rigid destination page is never disturbed. */
 .page-layer {
   position: absolute;
   inset: 0;
 }
 
-/* The sweeping clip window. Its content is counter-translated by the same
-   amount, so text stays pinned to the viewport while only this edge moves —
-   the page is never re-rasterised and never leaves the screen. */
+/* The clip edge follows the turn. Keeping this separate from the text surface
+   lets the paper body lag the hand during the lift without moving a layer. */
 .page-clip {
   position: absolute;
   inset: 0;
@@ -51,6 +52,8 @@
 .page-inner {
   position: absolute;
   inset: 0;
+  /* A curl uses one shallow perspective transform on this stable surface.
+     No opacity, backface culling, or edge-on rotation is involved. */
   will-change: transform;
 }
 
@@ -62,15 +65,14 @@
   border: none;
 }
 
-/* The lit crease where the sheet bends. Narrow and translucent: the pages on
-   either side stay readable — real paper shows a highlight at the fold, it
-   does not blank out the text around it. */
+/* The lit edge of the lifted sheet. Narrow and mostly translucent so it reads
+   as paper catching light without replacing the text with a blank flap. */
 .turn-flap {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
-  width: 30px;
+  width: 22px;
   z-index: 5;
   pointer-events: none;
   opacity: 0;
@@ -79,9 +81,10 @@
   background-image: linear-gradient(
     to right,
     rgba(20, 13, 4, 0.07) 0%,
-    rgba(255, 255, 255, 0.85) 45%,
-    rgba(255, 255, 255, 0.95) 55%,
-    rgba(20, 13, 4, 0.05) 100%
+    color-mix(in srgb, var(--bg) 38%, transparent) 34%,
+    color-mix(in srgb, var(--bg) 72%, white 28%) 48%,
+    color-mix(in srgb, var(--bg) 62%, white 38%) 54%,
+    rgba(20, 13, 4, 0.04) 100%
   );
 }
 
@@ -90,7 +93,7 @@
   top: 0;
   bottom: 0;
   left: 0;
-  width: 64px;
+  width: 72px;
   z-index: 4;
   pointer-events: none;
   opacity: 0;
@@ -98,12 +101,29 @@
   will-change: transform, opacity;
 }
 
+/*
+ * A cast shadow falls off fast next to the sheet casting it, then trails away
+ * in a long faint penumbra. A straight ramp instead reads as a flat grey wash
+ * laid over the destination text, so the stops are weighted toward the fold.
+ */
 .turn-shade[data-side='right'] {
-  background-image: linear-gradient(to right, rgba(20, 13, 4, 0.3), transparent);
+  background-image: linear-gradient(
+    to right,
+    rgba(20, 13, 4, 0.34) 0%,
+    rgba(20, 13, 4, 0.13) 22%,
+    rgba(20, 13, 4, 0.04) 52%,
+    transparent 100%
+  );
 }
 
 .turn-shade[data-side='left'] {
-  background-image: linear-gradient(to left, rgba(20, 13, 4, 0.3), transparent);
+  background-image: linear-gradient(
+    to left,
+    rgba(20, 13, 4, 0.34) 0%,
+    rgba(20, 13, 4, 0.13) 22%,
+    rgba(20, 13, 4, 0.04) 52%,
+    transparent 100%
+  );
 }
 
 .page-mask {

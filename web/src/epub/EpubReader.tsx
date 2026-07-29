@@ -5,7 +5,7 @@ import { EpubBook } from './loadEpub';
 import ReaderShell, { type ShellTocEntry } from '../reader/ReaderShell';
 import { READER_THEMES, useReaderSettings, type ReaderFont, type ReaderTheme } from '../reader/readerSettings';
 import { clamp } from '../lib/format';
-import { clearTurn, prepareTurn, runTurn, setTurnProgress, type TurnRun, type TurnMode, type TurnElements } from './pageCurl';
+import { clearTurn, prepareTurn, runTurn, setTurnProgress, type TurnRun, type TurnMode, type TurnElements, type TurnPhase } from './pageCurl';
 
 import literataUrl from '@fontsource-variable/literata/files/literata-latin-wght-normal.woff2?url';
 import literataItalicUrl from '@fontsource-variable/literata/files/literata-latin-wght-italic.woff2?url';
@@ -63,8 +63,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const [chapterVisible, setChapterVisible] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
-  // Two stacked page layers: the moving page pivots away while the destination
-  // page waits underneath. `frontIdx` is the layer showing the current page.
+  // Two stacked page layers: the outgoing sheet lifts while the destination
+  // waits rigidly underneath. `frontIdx` is the layer showing the current page.
   const layerRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)] as const;
   const frameRefs = [useRef<HTMLIFrameElement>(null), useRef<HTMLIFrameElement>(null)] as const;
   const clipRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)] as const;
@@ -355,41 +355,42 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     const rtlBook = epubRef.current?.pageProgression === 'rtl';
     placeLayer(other, targetGroup);
 
-    // The destination page is ALWAYS the one uncovered; the page being left
-    // never moves. Forward turns uncover from the trailing edge, backward
-    // turns from the spine edge — the same peel, mirrored.
-    const overIdx = other;
-    const restingIdx = frontIdxRef.current;
+    // The sheet that MOVES is the one your finger is on:
+    //   forward — you lift the page you are reading, uncovering the next one;
+    //   backward — you bring the previous page back and lay it down again.
+    // The other page lies flat and still underneath the whole time.
+    const forward = dir === 1;
+    const phase: TurnPhase = forward ? 'lift' : 'lay';
+    const overIdx = forward ? frontIdxRef.current : other;
+    const underIdx = 1 - overIdx;
+
     const overLayer = layerRefs[overIdx].current;
-    const resting = layerRefs[restingIdx].current;
+    const under = layerRefs[underIdx].current;
     const clip = clipRefs[overIdx].current;
     const inner = innerRefs[overIdx].current;
     const flap = flapRef.current;
     const shade = shadeRef.current;
     const width = stageRef.current?.clientWidth ?? 0;
-    if (!overLayer || !resting || !clip || !inner || !flap || !shade || !width) return null;
+    if (!overLayer || !under || !clip || !inner || !flap || !shade || !width) return null;
 
-    const forward = dir === 1;
-    const fromRight = rtlBook ? !forward : forward;
-
-    resting.style.zIndex = '1';
+    under.style.zIndex = '1';
     const mode: TurnMode = settingsRef.current.turn === 'slide' ? 'slide' : 'curl';
     const el: TurnElements = { overLayer, clip, inner, flap, shade };
-    prepareTurn(el, fromRight, mode);
-    setTurnProgress(el, 0, width, fromRight, mode);
+    prepareTurn(el, !!rtlBook, mode);
+    setTurnProgress(el, 0, width, phase, !!rtlBook, mode);
 
     return {
       el,
       mode,
       width,
-      fromRight,
-      // Both directions run 0 → 1; the side the fold sweeps from is what differs
+      phase,
+      mirror: !!rtlBook,
       from: 0,
       to: 1,
-      /** Land the turn: the uncovered page becomes the page being read. */
+      /** Land the turn: the destination page becomes the page being read. */
       settle: () => {
         clearTurn(el);
-        resting.style.zIndex = '';
+        under.style.zIndex = '';
         frontIdxRef.current = other;
         layerRefs[other].current!.style.zIndex = '2';
         layerRefs[1 - other].current!.style.zIndex = '1';
@@ -400,7 +401,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       /** Abandon the turn and leave the reader where it was. */
       revert: () => {
         clearTurn(el);
-        resting.style.zIndex = '';
+        under.style.zIndex = '';
         turningRef.current = false;
       },
     };
@@ -431,7 +432,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     turningRef.current = true;
     setGroup(g);
     liveTurnRef.current = turn;
-    curlRunRef.current = runTurn(turn.el, turn.from, turn.to, turn.width, TURN_MS, turn.fromRight, turn.mode, () => {
+    curlRunRef.current = runTurn(turn.el, turn.from, turn.to, turn.width, TURN_MS, turn.phase, turn.mirror, turn.mode, () => {
       liveTurnRef.current = null;
       turn.settle();
     });
@@ -589,7 +590,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       if (d.axis !== 'horizontal' || !d.turn) return;
       const w = doc.documentElement.clientWidth || 1;
       const travelled = Math.min(1, Math.abs(dx) / (w * 0.72));
-      setTurnProgress(d.turn.el, travelled, d.turn.width, d.turn.fromRight, d.turn.mode);
+      setTurnProgress(d.turn.el, travelled, d.turn.width, d.turn.phase, d.turn.mirror, d.turn.mode);
     }, { passive: true });
 
     const endDrag = (e: TouchEvent) => {
@@ -620,7 +621,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       const remaining = Math.max(120, TURN_MS * Math.abs(end - current));
 
       liveTurnRef.current = commit ? d.turn : { settle: d.turn.revert };
-      curlRunRef.current = runTurn(d.turn.el, current, end, d.turn.width, remaining, d.turn.fromRight, d.turn.mode, () => {
+      curlRunRef.current = runTurn(d.turn.el, current, end, d.turn.width, remaining, d.turn.phase, d.turn.mirror, d.turn.mode, () => {
         liveTurnRef.current = null;
         if (commit) {
           d.turn!.settle();
@@ -807,8 +808,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
                 // Only the visible page belongs to the accessibility tree
                 aria-hidden={i === 1 ? true : undefined}
               >
-                {/* The clip window sweeps; the content inside is counter-
-                    translated by the same amount, so the text never moves. */}
+                {/* The clip edge follows the gesture. In Curl mode the inner
+                    sheet only partially counters it, then tilts in shallow
+                    perspective so this page's text moves with the paper. */}
                 <div className="page-clip" ref={clipRefs[i]} style={{ background: theme.bg }}>
                   <div className="page-inner" ref={innerRefs[i]}>
                     <iframe
@@ -823,10 +825,10 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
                 </div>
               </div>
             ))}
-            {/* Shadow the fold casts onto the page it is uncovering */}
+            {/* Shadow the lifted sheet casts onto the rigid page underneath */}
             <div className="turn-shade" ref={shadeRef} aria-hidden />
-            {/* The turned-over paper, lying on what is still flat */}
-            <div className="turn-flap" ref={flapRef} style={{ backgroundColor: theme.bg }} aria-hidden />
+            {/* Narrow highlight along the lifted edge; never a blank paper flap */}
+            <div className="turn-flap" ref={flapRef} aria-hidden />
           </div>
         )}
         {geometry && (
