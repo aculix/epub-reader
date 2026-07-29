@@ -31,16 +31,21 @@
 .epub-frame-wrap {
   position: absolute;
   inset: 0;
-  perspective: 1800px;
+  perspective: 2200px;
   perspective-origin: 50% 50%;
-  transform-style: preserve-3d;
 }
 
+/* Promoted up front so the turn is a pure compositor transform: creating the
+   layer mid-animation is what makes the first frames stutter. `preserve-3d`
+   is deliberately absent — the layer is flat, only its own rotation matters,
+   and a 3D context here disables cheaper compositing paths. */
 .page-layer {
   position: absolute;
   inset: 0;
   backface-visibility: hidden;
-  transform-style: preserve-3d;
+  will-change: transform;
+  transform: translateZ(0);
+  contain: paint;
 }
 
 .epub-frame-wrap iframe {
@@ -51,13 +56,17 @@
   border: none;
 }
 
-/* Shading across the face of the moving page as it angles away */
+/* Shading across the face of the moving page as it angles away.
+   Half-width: the gradient is spent well before the far edge, and a
+   full-viewport translucent layer costs real fill rate on every frame. */
 .curl-gloss {
   position: absolute;
-  inset: 0;
+  inset: 0 auto 0 0;
+  width: 55%;
   z-index: 4;
   pointer-events: none;
   opacity: 0;
+  will-change: opacity;
   background: linear-gradient(
     to left,
     rgba(28, 18, 6, 0.42) 0%,
@@ -71,10 +80,12 @@
 /* Shadow the lifted page drops onto the page underneath */
 .curl-cast {
   position: absolute;
-  inset: 0;
+  inset: 0 auto 0 0;
+  width: 50%;
   z-index: 1;
   pointer-events: none;
   opacity: 0;
+  will-change: opacity;
   background: linear-gradient(
     to right,
     rgba(20, 13, 4, 0.34) 0%,

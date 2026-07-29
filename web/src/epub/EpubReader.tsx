@@ -5,7 +5,7 @@ import { EpubBook } from './loadEpub';
 import ReaderShell, { type ShellTocEntry } from '../reader/ReaderShell';
 import { READER_THEMES, useReaderSettings, type ReaderFont, type ReaderTheme } from '../reader/readerSettings';
 import { clamp } from '../lib/format';
-import { clearCurl, prepareCurl, runCurl, setCurlProgress, type CurlRun } from './pageCurl';
+import { clearCurl, prepareCurl, runCurl, setCurlProgress, type CurlRun, type TurnMode } from './pageCurl';
 
 import literataUrl from '@fontsource-variable/literata/files/literata-latin-wght-normal.woff2?url';
 import literataItalicUrl from '@fontsource-variable/literata/files/literata-latin-wght-italic.woff2?url';
@@ -88,6 +88,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   // highlight track sub-sections within a chapter file, not just the file.
   const anchorGroupsRef = useRef(new Map<number, number>());
 
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   groupRef.current = group;
   spineRef.current = spineIndex;
   epubRef.current = epub;
@@ -149,8 +152,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         column-width: ${colW}px;
         column-gap: ${COL_GAP}px;
         column-fill: auto;
-        transition: transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1);
-        will-change: transform;
+        /* The strip is positioned instantly (the page layer does the moving),
+           so it must NOT be promoted: it is thousands of pixels wide and
+           will-change would hand the GPU a huge texture per layer. */
         font-family: ${FONT_STACKS[settings.font]};
         font-size: ${settings.fontSize}px;
         line-height: ${settings.lineHeight};
@@ -333,12 +337,14 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     if (!moving || !resting || !gloss || !cast) return null;
 
     resting.style.zIndex = '1';
+    const mode: TurnMode = settingsRef.current.turn === 'slide' ? 'slide' : 'curl';
     const el = { page: moving, gloss, cast };
-    prepareCurl(el, !!rtlBook);
-    setCurlProgress(el, dir === 1 ? 0 : 1, !!rtlBook);
+    prepareCurl(el, !!rtlBook, mode);
+    setCurlProgress(el, dir === 1 ? 0 : 1, !!rtlBook, mode);
 
     return {
       el,
+      mode,
       rtl: !!rtlBook,
       from: dir === 1 ? 0 : 1,
       to: dir === 1 ? 1 : 0,
@@ -361,7 +367,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   }, [placeLayer, layerRefs, glossRefs]);
 
   const goToGroup = useCallback((g: number, dir: 1 | -1) => {
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduceMotion =
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      settingsRef.current.turn === 'none';
     curlRunRef.current?.cancel();
 
     if (reduceMotion) {
@@ -380,7 +388,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }
     turningRef.current = true;
     setGroup(g);
-    curlRunRef.current = runCurl(turn.el, turn.from, turn.to, TURN_MS, turn.rtl, turn.settle);
+    curlRunRef.current = runCurl(turn.el, turn.from, turn.to, TURN_MS, turn.rtl, turn.settle, turn.mode);
     scheduleSave();
   }, [applyGroup, beginTurn, scheduleSave]);
 
@@ -534,7 +542,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       const w = doc.documentElement.clientWidth || 1;
       const travelled = Math.min(1, Math.abs(dx) / (w * 0.72));
       // Forward runs 0 → 1, backward 1 → 0
-      setCurlProgress(d.turn.el, d.dir === 1 ? travelled : 1 - travelled, d.turn.rtl);
+      setCurlProgress(d.turn.el, d.dir === 1 ? travelled : 1 - travelled, d.turn.rtl, d.turn.mode);
     }, { passive: true });
 
     const endDrag = (e: TouchEvent) => {
@@ -572,7 +580,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         } else {
           d.turn!.revert();
         }
-      });
+      }, d.turn.mode);
     };
     doc.addEventListener('touchend', endDrag, { passive: true });
     doc.addEventListener('touchcancel', endDrag, { passive: true });
@@ -909,6 +917,21 @@ function EpubSettingsPanel({
               key={mode}
               className={`seg ${settings.spread === mode ? 'seg-active' : ''}`}
               onClick={() => update({ spread: mode })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Page turn</span>
+        <div className="seg-row">
+          {([['curl', 'Curl'], ['slide', 'Slide'], ['none', 'None']] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              className={`seg ${settings.turn === mode ? 'seg-active' : ''}`}
+              onClick={() => update({ turn: mode })}
             >
               {label}
             </button>

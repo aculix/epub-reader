@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react';
 
 export type ReaderTheme = 'paper' | 'sepia' | 'dusk';
 export type ReaderFont = 'literata' | 'georgia' | 'sans';
+/** How a page turn is animated. Curl is a 3D pivot; slide is a flat push. */
+export type TurnStyle = 'curl' | 'slide' | 'none';
 export type SpreadMode = 'auto' | 'single' | 'double';
 
 export interface ReaderSettings {
@@ -12,6 +14,7 @@ export interface ReaderSettings {
   spread: SpreadMode;
   /** false = "Quire style": override publisher fonts/colors for clean, legible pages */
   pubStyles: boolean;
+  turn: TurnStyle;
 }
 
 export interface ReaderThemeSpec {
@@ -81,6 +84,7 @@ const DEFAULTS: ReaderSettings = {
   lineHeight: 1.62,
   spread: 'auto',
   pubStyles: false,
+  turn: 'curl',
 };
 
 const KEY = 'quire:reader-settings';
