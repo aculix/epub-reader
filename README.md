@@ -15,18 +15,37 @@ Upload an ePUB or PDF and Quire automatically fetches its metadata (cover, descr
 
 ## Run with Docker
 
+A prebuilt multi-architecture image (`linux/amd64` and `linux/arm64`, so it runs
+on regular servers, Apple Silicon, and Raspberry Pi alike) is published to the
+GitHub Container Registry:
+
 ```bash
-docker build -t quire .
-docker run -d --name quire -p 3391:3391 -v quire-data:/data quire
+docker run -d --name quire -p 3391:3391 -v quire-data:/data ghcr.io/aculix/epub-reader:latest
 ```
 
 or with compose:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
 Then open `http://localhost:3391` (or your server's address).
+
+Available tags: `latest` (newest build of `main`), `v1.2.3` / `v1.2` / `v1` for
+releases, and `sha-<commit>` to pin an exact build.
+
+To update:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+### Build it yourself
+
+```bash
+docker build -t quire .
+docker run -d --name quire -p 3391:3391 -v quire-data:/data quire
+```
 
 ### Configuration
 

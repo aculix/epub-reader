@@ -1,6 +1,9 @@
 services:
   quire:
-    build: .
+    # Prebuilt multi-arch image (x86-64 + ARM64). To build from source
+    # instead, comment out `image:` and uncomment `build: .`
+    image: ghcr.io/aculix/epub-reader:latest
+    # build: .
     container_name: quire
     ports:
       - "3391:3391"
