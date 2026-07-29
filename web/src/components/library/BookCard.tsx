@@ -77,26 +77,35 @@ export default function BookCard({ book, index, onDetails, onRefresh, onDelete }
           <Link to={`/read/${book.id}`} className="book-title" title={book.title}>{book.title}</Link>
           {book.author && <span className="book-author" title={book.author}>{book.author}</span>}
         </div>
-        <div className={`book-menu ${menuOpen ? 'open' : ''}`}>
+        <div
+          className={`book-menu ${menuOpen ? 'open' : ''}`}
+          onBlur={(e) => {
+            // Close only when focus truly leaves the menu (keyboard-safe)
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setMenuOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setMenuOpen(false);
+          }}
+        >
           <button
             className="icon-btn book-menu-btn"
             aria-label={`Options for ${book.title}`}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
           >
             <IconDots />
           </button>
           {menuOpen && (
             <motion.div
               className="menu-pop"
+              role="menu"
               initial={{ opacity: 0, y: 6, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
             >
-              <button onMouseDown={() => onDetails(book)}><IconInfo /> About this book</button>
-              <button onMouseDown={() => onRefresh(book)}><IconRefresh /> Refresh metadata</button>
-              <button className="danger" onMouseDown={() => onDelete(book)}><IconTrash /> Remove</button>
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onDetails(book); }}><IconInfo /> About this book</button>
+              <button role="menuitem" onClick={() => { setMenuOpen(false); onRefresh(book); }}><IconRefresh /> Refresh metadata</button>
+              <button role="menuitem" className="danger" onClick={() => { setMenuOpen(false); onDelete(book); }}><IconTrash /> Remove</button>
             </motion.div>
           )}
         </div>

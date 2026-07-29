@@ -4,6 +4,14 @@ import fs from 'node:fs';
 import booksRouter from './books.js';
 import { PORT, ROOT_DIR, DATA_DIR } from './config.js';
 
+// A single failed request must never take the server down with it
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '2mb' }));

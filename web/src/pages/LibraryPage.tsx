@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, type Book } from '../lib/api';
-import { useTheme } from '../lib/theme';
+import { useThemeContext } from '../lib/theme';
 import { useUploads } from '../components/library/useUploads';
 import BookCard from '../components/library/BookCard';
 import UploadCard from '../components/library/UploadCard';
@@ -15,9 +15,10 @@ type FormatFilter = 'all' | 'epub' | 'pdf';
 type Sort = 'recent' | 'title' | 'author';
 
 export default function LibraryPage() {
-  const [theme, toggleTheme] = useTheme();
+  const [theme, toggleTheme] = useThemeContext();
   const [books, setBooks] = useState<Book[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState<FormatFilter>('all');
   const [sort, setSort] = useState<Sort>('recent');
@@ -93,17 +94,46 @@ export default function LibraryPage() {
   }, [books, query, format]);
 
   const handleRefresh = async (book: Book) => {
-    const updated = await api.refreshMetadata(book.id);
-    setBooks((list) => (list ?? []).map((b) => (b.id === updated.id ? updated : b)));
-    setSelected((s) => (s?.id === updated.id ? updated : s));
+    try {
+      const updated = await api.refreshMetadata(book.id);
+      setBooks((list) => (list ?? []).map((b) => (b.id === updated.id ? updated : b)));
+      setSelected((s) => (s?.id === updated.id ? updated : s));
+    } catch (err) {
+      setToast(`Couldn’t refresh metadata: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
   };
 
   const handleDelete = async (book: Book) => {
-    await api.deleteBook(book.id);
-    setBooks((list) => (list ?? []).filter((b) => b.id !== book.id));
-    setConfirmDelete(null);
-    setSelected((s) => (s?.id === book.id ? null : s));
+    try {
+      await api.deleteBook(book.id);
+      setBooks((list) => (list ?? []).filter((b) => b.id !== book.id));
+      setSelected((s) => (s?.id === book.id ? null : s));
+    } catch (err) {
+      setToast(`Couldn’t remove the book: ${err instanceof Error ? err.message : 'unknown error'}`);
+    } finally {
+      setConfirmDelete(null);
+    }
   };
+
+  // Error toasts auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // Escape closes the topmost layer only (confirm dialog above detail modal)
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopImmediatePropagation();
+        setConfirmDelete(null);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [confirmDelete]);
 
   const isEmpty = books !== null && books.length === 0 && uploads.length === 0;
 
@@ -251,6 +281,21 @@ export default function LibraryPage() {
             onRefresh={handleRefresh}
             onDelete={(b) => setConfirmDelete(b)}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            className="toast"
+            role="alert"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {toast}
+          </motion.div>
         )}
       </AnimatePresence>
 

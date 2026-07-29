@@ -937,6 +937,22 @@
   margin-top: 24px;
 }
 
+.toast {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  max-width: min(480px, calc(100vw - 40px));
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13.5px;
+  font-weight: 550;
+  box-shadow: var(--shadow-lg);
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }

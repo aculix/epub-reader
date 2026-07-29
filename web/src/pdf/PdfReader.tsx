@@ -279,6 +279,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
         }}
         onTouchStart={(e) => { touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
         onTouchEnd={(e) => {
+          if (zoom > 1) return; // zoomed: touch pans the scroll container
           const dx = e.changedTouches[0].clientX - touch.current.x;
           const dy = e.changedTouches[0].clientY - touch.current.y;
           if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
@@ -288,7 +289,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
       >
         {!doc && <div className="reader-loading"><div className="book-loader"><span /><span /><span /></div></div>}
         {doc && stageSize && (
-          <AnimatePresence mode="popLayout" initial={false}>
+          <AnimatePresence initial={false}>
             <motion.div
               key={view.join('-')}
               className={`pdf-view ${settings.night ? 'pdf-night' : ''}`}
@@ -322,16 +323,24 @@ function PdfPage({
 
   useEffect(() => {
     let cancelled = false;
+    let page: Awaited<ReturnType<PDFDocumentProxy['getPage']>> | null = null;
     (async () => {
       try {
         const pdfPage = await doc.getPage(pageNum);
+        page = pdfPage;
         if (cancelled) return;
         const base = pdfPage.getViewport({ scale: 1 });
         const availW = (stageSize.w - 64 - (cols - 1) * 20) / cols;
         const availH = stageSize.h - 44;
         const fit = Math.min(availW / base.width, availH / base.height);
         const scale = fit * zoom;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        let dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        // Pixel budget: iOS Safari refuses canvases beyond ~16.7M pixels
+        const MAX_PIXELS = 16_000_000;
+        const cssPixels = base.width * scale * base.height * scale;
+        if (cssPixels * dpr * dpr > MAX_PIXELS) {
+          dpr = Math.max(1, Math.sqrt(MAX_PIXELS / cssPixels));
+        }
         const viewport = pdfPage.getViewport({ scale });
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -353,6 +362,10 @@ function PdfPage({
     return () => {
       cancelled = true;
       renderTaskRef.current?.cancel();
+      // Release the page's decoded images/operator list; pdf.js caches page
+      // proxies for the document's lifetime otherwise. cleanup() refuses
+      // internally while a render is active, so this is safe best-effort.
+      try { page?.cleanup(); } catch { /* fine */ }
     };
   }, [doc, pageNum, stageSize, cols, zoom]);
 

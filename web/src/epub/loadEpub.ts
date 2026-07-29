@@ -59,6 +59,8 @@ function parseXml(text: string): Document {
 export class EpubBook {
   title = 'Untitled';
   language = 'en';
+  /** Reading direction from the spine's page-progression-direction */
+  pageProgression: 'ltr' | 'rtl' = 'ltr';
   spine: SpineItem[] = [];
   toc: TocEntry[] = [];
   totalBytes = 0;
@@ -126,6 +128,7 @@ export class EpubBook {
     }
 
     const spineEl = opf.querySelector('spine');
+    if (spineEl?.getAttribute('page-progression-direction') === 'rtl') this.pageProgression = 'rtl';
     const tocAttr = spineEl?.getAttribute('toc');
     if (!ncxPath && tocAttr) ncxPath = this.manifest.get(tocAttr)?.path ?? null;
 
@@ -328,13 +331,17 @@ export class EpubBook {
       }
     }
 
-    // Internal links → intercepted; external links → new tab
+    // Internal links (including same-file footnote refs) → intercepted so
+    // native fragment scrolling can't shear the column grid; external → new tab
     doc.querySelectorAll('a[href]').forEach((a) => {
       const href = a.getAttribute('href')!;
       if (/^(https?:|mailto:)/i.test(href)) {
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener noreferrer');
-      } else if (!href.startsWith('#')) {
+      } else if (href.startsWith('#')) {
+        a.setAttribute('data-quire-href', item.path + href);
+        a.removeAttribute('href');
+      } else {
         const hash = href.includes('#') ? '#' + href.split('#')[1] : '';
         a.setAttribute('data-quire-href', resolvePath(item.path, href) + hash);
         a.removeAttribute('href');
@@ -350,10 +357,15 @@ export class EpubBook {
     });
     const bodyEl = doc.body ?? doc.documentElement;
     const bodyHtml = Array.from(bodyEl.childNodes).map((n) => serializer.serializeToString(n)).join('');
-    const bodyClass = bodyEl.getAttribute('class') || '';
+    const bodyClass = (bodyEl.getAttribute('class') || '').replace(/"/g, '');
+    // Preserve writing direction — dropping dir renders RTL books as garbled LTR
+    const dir =
+      doc.documentElement.getAttribute('dir') ||
+      bodyEl.getAttribute('dir') ||
+      (this.pageProgression === 'rtl' ? 'rtl' : '');
 
     const html = [
-      `<!DOCTYPE html><html lang="${this.language}"><head><meta charset="utf-8"/>`,
+      `<!DOCTYPE html><html lang="${this.language}"${dir ? ` dir="${dir}"` : ''}><head><meta charset="utf-8"/>`,
       ...headParts,
       '</head><body id="quire-body" class="', bodyClass, '"><div id="quire-root">', bodyHtml, '</div></body></html>',
     ].join('');

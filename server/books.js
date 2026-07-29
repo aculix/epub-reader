@@ -229,6 +229,7 @@ router.delete('/:id', (req, res) => {
 });
 
 router.post('/:id/refresh-metadata', async (req, res) => {
+  try {
   const row = db.prepare('SELECT * FROM books WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Book not found' });
   const { fields, cover } = await enrichBook({
@@ -261,6 +262,10 @@ router.post('/:id/refresh-metadata', async (req, res) => {
     `).run(merged);
   }
   res.json(toJson(db.prepare(`${SELECT_BOOK} WHERE b.id = ?`).get(req.params.id)));
+  } catch (err) {
+    console.error('[refresh-metadata] failed:', err);
+    res.status(500).json({ error: 'Metadata refresh failed' });
+  }
 });
 
 router.get('/:id/file', (req, res) => {

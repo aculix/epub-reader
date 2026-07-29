@@ -29,6 +29,25 @@ function extForMime(mime) {
   return { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp' }[mime] || '.jpg';
 }
 
+// Caps on decompressed sizes so a crafted ePUB (zip bomb) can't OOM the process.
+const MAX_TEXT_BYTES = 10 * 1024 * 1024;
+const MAX_COVER_BYTES = 30 * 1024 * 1024;
+
+function declaredSize(entry) {
+  // JSZip keeps the central-directory uncompressed size internally
+  const size = entry?._data?.uncompressedSize;
+  return typeof size === 'number' && size >= 0 ? size : null;
+}
+
+async function safeText(entry, cap = MAX_TEXT_BYTES) {
+  if (!entry) return null;
+  const size = declaredSize(entry);
+  if (size !== null && size > cap) throw new Error(`ePUB entry too large (${size} bytes)`);
+  const text = await entry.async('text');
+  if (text.length > cap) throw new Error('ePUB entry exceeded size cap while inflating');
+  return text;
+}
+
 // Zip entry lookups must tolerate href percent-encoding and case drift.
 function findEntry(zip, p) {
   if (zip.files[p]) return zip.files[p];
@@ -62,14 +81,14 @@ export async function extractEpubMetadata(buffer, fallbackTitle) {
 
   const containerEntry = findEntry(zip, 'META-INF/container.xml');
   if (!containerEntry) return out;
-  const container = parser.parse(await containerEntry.async('text'));
+  const container = parser.parse(await safeText(containerEntry));
   const rootfiles = asArray(container?.container?.rootfiles?.rootfile);
   const opfPath = rootfiles[0]?.['@_full-path'];
   if (!opfPath) return out;
 
   const opfEntry = findEntry(zip, opfPath);
   if (!opfEntry) return out;
-  const opf = parser.parse(await opfEntry.async('text'));
+  const opf = parser.parse(await safeText(opfEntry));
   const pkg = opf?.package;
   if (!pkg) return out;
 
@@ -116,11 +135,12 @@ export async function extractEpubMetadata(buffer, fallbackTitle) {
 
   if (coverItem?.['@_href']) {
     const entry = findEntry(zip, resolveHref(opfDir, coverItem['@_href']));
-    if (entry) {
-      out.cover = {
-        data: await entry.async('nodebuffer'),
-        ext: extForMime(coverItem['@_media-type']),
-      };
+    const size = declaredSize(entry);
+    if (entry && (size === null || size <= MAX_COVER_BYTES)) {
+      const data = await entry.async('nodebuffer');
+      if (data.length <= MAX_COVER_BYTES) {
+        out.cover = { data, ext: extForMime(coverItem['@_media-type']) };
+      }
     }
   }
 

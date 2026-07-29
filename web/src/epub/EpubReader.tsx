@@ -74,6 +74,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const lastSaved = useRef<{ percent: number; location: EpubLocation } | null>(null);
   // Where to land once the incoming chapter is measured
   const pendingTarget = useRef<{ fraction?: number; hash?: string; end?: boolean }>({ fraction: 0 });
+  // Blocks next/prev while a chapter is loading, so holding an arrow key at a
+  // boundary can't act on stale group/layout refs and skip chapters.
+  const loadingChapterRef = useRef(false);
 
   groupRef.current = group;
   spineRef.current = spineIndex;
@@ -181,6 +184,16 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
 
   useEffect(() => {
     if (!epub || !stageSize) return;
+    // Preserve the current position across settings/resize reloads unless an
+    // explicit navigation target (open/seek/toc/link) is already pending.
+    const t = pendingTarget.current;
+    const lay = layoutRef.current;
+    if (t.fraction == null && !t.hash && !t.end && lay) {
+      pendingTarget.current = {
+        fraction: lay.totalColumns <= lay.cols ? 0 : (groupRef.current * lay.cols) / lay.totalColumns,
+      };
+    }
+    loadingChapterRef.current = true;
     let cancelled = false;
     setChapterVisible(false);
     epub.prepareChapter(spineIndex).then((ch) => {
@@ -199,8 +212,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     const root = doc?.getElementById('quire-root');
     const lay = layoutRef.current;
     if (!root || !lay) return;
+    const sign = epubRef.current?.pageProgression === 'rtl' ? 1 : -1;
     root.style.transition = animate ? `transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : 'none';
-    root.style.transform = `translateX(${-g * lay.stepW}px)`;
+    root.style.transform = `translateX(${sign * g * lay.stepW}px)`;
     if (!animate) {
       // force reflow so the next transition animates from here
       void root.getBoundingClientRect();
@@ -224,22 +238,28 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
 
     // Resolve the pending target into a page group
     const t = pendingTarget.current;
+    const rtl = epubRef.current?.pageProgression === 'rtl';
     let g = 0;
     if (t.end) {
       g = groups - 1;
     } else if (t.hash) {
       const el = doc.getElementById(t.hash.slice(1));
       if (el) {
-        const left = Math.max(0, (el as HTMLElement).offsetLeft - padLeft);
-        g = clamp(Math.floor(left / (colW + COL_GAP) / cols), 0, groups - 1);
+        // offsetLeft is layout-based (transform-independent); in RTL multicol
+        // the first reading column sits at the far right.
+        const rawCol = Math.floor(Math.max(0, (el as HTMLElement).offsetLeft - padLeft) / (colW + COL_GAP));
+        const colIdx = rtl ? Math.max(0, totalColumns - 1 - rawCol) : rawCol;
+        g = clamp(Math.floor(colIdx / cols), 0, groups - 1);
       }
     } else if (t.fraction != null) {
-      g = clamp(Math.round(t.fraction * (totalColumns - cols) / cols), 0, groups - 1);
+      // Exact inverse of the save formula (fraction = g*cols/totalColumns)
+      g = clamp(Math.round((t.fraction * totalColumns) / cols), 0, groups - 1);
     }
     pendingTarget.current = {};
     setGroup(g);
     applyGroup(g, false);
     setChapterVisible(true);
+    loadingChapterRef.current = false;
   }, [stageSize, settings.spread, applyGroup]);
 
   // ---------- navigation ----------
@@ -268,7 +288,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const next = useCallback(() => {
     const lay = layoutRef.current;
     const ep = epubRef.current;
-    if (!lay || !ep) return;
+    if (!lay || !ep || loadingChapterRef.current) return;
     if (groupRef.current < lay.groups - 1) {
       goToGroup(groupRef.current + 1, 1);
     } else if (spineRef.current < ep.spine.length - 1) {
@@ -281,6 +301,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
 
   const prev = useCallback(() => {
     const ep = epubRef.current;
+    if (loadingChapterRef.current) return;
     if (groupRef.current > 0) {
       goToGroup(groupRef.current - 1, -1);
     } else if (ep && spineRef.current > 0) {
@@ -354,6 +375,17 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       if (!img.complete) img.addEventListener('load', remeasure, { once: true });
     });
 
+    // Any native fragment scroll would shear the column grid — pin it to 0.
+    const pinScroll = () => {
+      if (doc.documentElement.scrollLeft || doc.body.scrollLeft || doc.documentElement.scrollTop || doc.body.scrollTop) {
+        doc.documentElement.scrollLeft = 0;
+        doc.body.scrollLeft = 0;
+        doc.documentElement.scrollTop = 0;
+        doc.body.scrollTop = 0;
+      }
+    };
+    doc.addEventListener('scroll', pinScroll, { passive: true });
+
     // Input inside the sandboxed document
     doc.addEventListener('click', (e) => {
       const anchor = (e.target as Element | null)?.closest?.('a[data-quire-href]');
@@ -363,10 +395,11 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         return;
       }
       if ((doc.getSelection()?.toString() ?? '').length > 0) return;
+      const isRtl = epubRef.current?.pageProgression === 'rtl';
       const x = (e as MouseEvent).clientX;
       const w = doc.documentElement.clientWidth;
-      if (x < w * 0.22) prevRef.current();
-      else if (x > w * 0.78) nextRef.current();
+      if (x < w * 0.22) (isRtl ? nextRef : prevRef).current();
+      else if (x > w * 0.78) (isRtl ? prevRef : nextRef).current();
       else window.dispatchEvent(new Event('quire:toggle-chrome'));
     });
 
@@ -390,18 +423,19 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       const dx = e.changedTouches[0].clientX - touchX;
       const dy = e.changedTouches[0].clientY - touchY;
       if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-        if (dx < 0) nextRef.current();
-        else prevRef.current();
+        const isRtl = epubRef.current?.pageProgression === 'rtl';
+        if (dx < 0) (isRtl ? prevRef : nextRef).current();
+        else (isRtl ? nextRef : prevRef).current();
       }
     }, { passive: true });
 
-    doc.addEventListener('keydown', (e) => handleKey(e as KeyboardEvent, nextRef.current, prevRef.current));
+    doc.addEventListener('keydown', (e) => handleKey(e as KeyboardEvent, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl'));
     doc.addEventListener('mousemove', () => window.dispatchEvent(new Event('quire:poke-chrome')), { passive: true });
   }, [measureAndPlace]);
 
   // Parent-level keyboard
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => handleKey(e, nextRef.current, prevRef.current);
+    const onKey = (e: KeyboardEvent) => handleKey(e, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl');
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -453,6 +487,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
 
   const atStart = spineIndex === 0 && group === 0;
   const atEnd = !!epub && spineIndex === epub.spine.length - 1 && !!layout && group >= layout.groups - 1;
+  // Edge chevrons are spatial controls — mirror them for RTL books
+  const rtl = epub?.pageProgression === 'rtl';
 
   if (error) {
     return (
@@ -470,10 +506,10 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       positionLabel={layout ? `Page ${group + 1} of ${layout.groups} in chapter` : null}
       percent={percent}
       onSeek={epub ? seek : undefined}
-      onPrev={prev}
-      onNext={next}
-      atStart={atStart}
-      atEnd={atEnd}
+      onPrev={rtl ? next : prev}
+      onNext={rtl ? prev : next}
+      atStart={rtl ? atEnd : atStart}
+      atEnd={rtl ? atStart : atEnd}
       toc={toc}
       stageBackground={theme.stage}
       chromeDark={settings.theme === 'dusk'}
@@ -513,8 +549,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
             <motion.div
               key={turnFx.id}
               className="turn-shadow"
-              initial={{ x: turnFx.dir === 1 ? '110%' : '-40%', opacity: 0.9 }}
-              animate={{ x: turnFx.dir === 1 ? '-40%' : '110%', opacity: 0 }}
+              initial={{ x: (rtl ? -turnFx.dir : turnFx.dir) === 1 ? '110%' : '-40%', opacity: 0.9 }}
+              animate={{ x: (rtl ? -turnFx.dir : turnFx.dir) === 1 ? '-40%' : '110%', opacity: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: TURN_MS / 1000 + 0.1, ease: [0.3, 0.6, 0.3, 1] }}
               onAnimationComplete={() => setTurnFx(null)}
@@ -527,18 +563,24 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   );
 }
 
-function handleKey(e: KeyboardEvent, next: () => void, prev: () => void) {
+function handleKey(e: KeyboardEvent, next: () => void, prev: () => void, rtl = false) {
   if (e.defaultPrevented) return;
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   switch (e.key) {
-    case 'ArrowRight':
-    case 'PageDown':
+    case 'ArrowRight': // spatial: mirrored for right-to-left books
+      e.preventDefault();
+      (rtl ? prev : next)();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      (rtl ? next : prev)();
+      break;
+    case 'PageDown': // logical: always forward
     case ' ':
       e.preventDefault();
       next();
       break;
-    case 'ArrowLeft':
     case 'PageUp':
       e.preventDefault();
       prev();

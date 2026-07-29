@@ -1,0 +1,10 @@
+node_modules
+web/node_modules
+web/dist
+data
+.git
+.claude
+*.log
+.DS_Store
+README.md
+docker-compose.yml

@@ -74,6 +74,8 @@
 }
 
 .pdf-view {
+  position: absolute;
+  inset: 0;
   display: flex;
   gap: 20px;
   align-items: center;
@@ -81,6 +83,7 @@
 }
 
 .pdf-zoomed .pdf-view {
+  position: static;
   width: max-content;
   margin: 0 auto;
 }
