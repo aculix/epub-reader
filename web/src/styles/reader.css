@@ -36,16 +36,17 @@
 }
 
 /* Promoted up front so the turn is a pure compositor transform: creating the
-   layer mid-animation is what makes the first frames stutter. `preserve-3d`
-   is deliberately absent — the layer is flat, only its own rotation matters,
-   and a 3D context here disables cheaper compositing paths. */
+   layer mid-animation is what makes the first frames stutter.
+   Deliberately MINIMAL: `will-change` alone composites. Adding translateZ(0)
+   is redundant, and `contain: paint` clips nothing here (the only child is a
+   full-bleed iframe) while forcing an intermediate render surface around an
+   iframe subtree — which is what made slow turns flicker.
+   `backface-visibility` is applied per-turn by prepareCurl, so a resting page
+   never sits behind a culling test. */
 .page-layer {
   position: absolute;
   inset: 0;
-  backface-visibility: hidden;
   will-change: transform;
-  transform: translateZ(0);
-  contain: paint;
 }
 
 .epub-frame-wrap iframe {
@@ -82,7 +83,8 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 50%;
-  z-index: 1;
+  /* Between the resting page (1) and the moving page (3), or it is invisible */
+  z-index: 2;
   pointer-events: none;
   opacity: 0;
   will-change: opacity;

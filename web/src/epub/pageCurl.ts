@@ -52,6 +52,9 @@ const castFor = (p: number) => Math.sin(Math.min(1, Math.max(0, p)) * Math.PI) *
 export function prepareCurl(el: CurlElements, rtl: boolean, mode: TurnMode = 'curl') {
   el.page.style.transformOrigin = mode === 'slide' ? 'center center' : rtl ? 'right center' : 'left center';
   el.page.style.zIndex = '3';
+  // Only the curl needs backface culling, and only while it is turning: leaving
+  // it on a resting page keeps every frame behind a culling test for nothing.
+  el.page.style.backfaceVisibility = mode === 'curl' ? 'hidden' : '';
   // Input would land on a page that is mid-flight
   el.page.style.pointerEvents = 'none';
 }
@@ -66,6 +69,7 @@ export function setCurlProgress(el: CurlElements, p: number, rtl: boolean, mode:
 export function clearCurl(el: CurlElements) {
   el.page.style.transform = '';
   el.page.style.zIndex = '';
+  el.page.style.backfaceVisibility = '';
   el.page.style.pointerEvents = '';
   el.gloss.style.opacity = '0';
   el.cast.style.opacity = '0';

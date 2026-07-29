@@ -70,7 +70,14 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const glossRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)] as const;
   const castRef = useRef<HTMLDivElement>(null);
   const frontIdxRef = useRef(0);
+  /** Page group each layer is currently parked on, so a turn can skip
+      re-parking (moving a huge column strip forces a fresh rasterisation,
+      which is visible as a flash mid-gesture). */
+  const layerGroupRef = useRef<[number | null, number | null]>([null, null]);
   const curlRunRef = useRef<CurlRun | null>(null);
+  /** The in-flight turn, so a turn interrupted by the next one still lands
+      instead of stranding a layer raised and non-interactive. */
+  const liveTurnRef = useRef<{ settle: () => void } | null>(null);
   const turningRef = useRef(false);
   const layoutRef = useRef<Layout | null>(null);
   const groupRef = useRef(0);
@@ -211,6 +218,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       };
     }
     loadingChapterRef.current = true;
+    layerGroupRef.current = [null, null];
     let cancelled = false;
     setChapterVisible(false);
     epub.prepareChapter(spineIndex).then((ch) => {
@@ -230,13 +238,28 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   /** Park a layer's column strip on a page group. Always instant — the curl
       provides the motion, so the strip itself never animates. */
   const placeLayer = useCallback((layerIdx: number, g: number) => {
+    if (layerGroupRef.current[layerIdx] === g) return; // already rasterised there
     const root = frameRefs[layerIdx].current?.contentDocument?.getElementById('quire-root');
     const lay = layoutRef.current;
     if (!root || !lay) return;
     const sign = epubRef.current?.pageProgression === 'rtl' ? 1 : -1;
     root.style.transition = 'none';
     root.style.transform = `translateX(${sign * g * lay.stepW}px)`;
+    layerGroupRef.current[layerIdx] = g;
   }, [frameRefs]);
+
+  /**
+   * Park the hidden layer on the page the reader is most likely to want next,
+   * while nothing is moving. Doing this during a gesture makes the browser
+   * rasterise a fresh slice of the strip mid-drag, which shows up as a flash.
+   */
+  const prestageNext = useCallback((fromGroup: number) => {
+    const lay = layoutRef.current;
+    if (!lay) return;
+    const back = 1 - frontIdxRef.current;
+    const target = Math.min(lay.groups - 1, fromGroup + 1);
+    placeLayer(back, target);
+  }, [placeLayer]);
 
   /** Position the visible page without any turn animation. */
   const applyGroup = useCallback((g: number) => {
@@ -293,10 +316,14 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }
     pendingTarget.current = {};
     setGroup(g);
-    applyGroup(g);
+    // Place BOTH layers: the back frame's own load handler runs before layout
+    // exists whenever it wins the race, and would otherwise stay on page 0 —
+    // making the first turn of every chapter jump a fully unrasterised page.
+    placeLayer(frontIdxRef.current, g);
     setChapterVisible(true);
     loadingChapterRef.current = false;
-  }, [stageSize, settings.spread, applyGroup]);
+    prestageNext(g);
+  }, [stageSize, settings.spread, placeLayer, prestageNext, frontFrame]);
 
   // ---------- navigation ----------
   const scheduleSave = useCallback(() => {
@@ -356,6 +383,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         layerRefs[other].current!.style.zIndex = '2';
         layerRefs[1 - other].current!.style.zIndex = '1';
         turningRef.current = false;
+        // Warm the next page while the reader is idle
+        prestageNext(targetGroup);
       },
       /** Abandon the turn and leave the reader where it was. */
       revert: () => {
@@ -364,13 +393,15 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         turningRef.current = false;
       },
     };
-  }, [placeLayer, layerRefs, glossRefs]);
+  }, [placeLayer, prestageNext, layerRefs, glossRefs]);
 
   const goToGroup = useCallback((g: number, dir: 1 | -1) => {
     const reduceMotion =
       window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
       settingsRef.current.turn === 'none';
     curlRunRef.current?.cancel();
+    liveTurnRef.current?.settle();
+    liveTurnRef.current = null;
 
     if (reduceMotion) {
       setGroup(g);
@@ -388,7 +419,11 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }
     turningRef.current = true;
     setGroup(g);
-    curlRunRef.current = runCurl(turn.el, turn.from, turn.to, TURN_MS, turn.rtl, turn.settle, turn.mode);
+    liveTurnRef.current = turn;
+    curlRunRef.current = runCurl(turn.el, turn.from, turn.to, TURN_MS, turn.rtl, () => {
+      liveTurnRef.current = null;
+      turn.settle();
+    }, turn.mode);
     scheduleSave();
   }, [applyGroup, beginTurn, scheduleSave]);
 
@@ -534,6 +569,8 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
         // Chapter-boundary turns fall back to the normal path on release
         if (target < 0 || target > lay.groups - 1) return;
         curlRunRef.current?.cancel();
+        liveTurnRef.current?.settle();
+        liveTurnRef.current = null;
         turningRef.current = true;
         d.turn = beginTurn(target, d.dir);
       }
@@ -572,7 +609,9 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       const end = commit === (d.dir === 1) ? 1 : 0;
       const remaining = Math.max(120, TURN_MS * Math.abs(end - current));
 
+      liveTurnRef.current = commit ? d.turn : { settle: d.turn.revert };
       curlRunRef.current = runCurl(d.turn.el, current, end, remaining, d.turn.rtl, () => {
+        liveTurnRef.current = null;
         if (commit) {
           d.turn!.settle();
           setGroup(groupRef.current + d.dir);
