@@ -61,21 +61,30 @@ export default function BookCard({ book, index, onDetails, onRefresh, onDelete }
       <Link to={`/read/${book.id}`} className="book-cover-link" aria-label={`Read ${book.title}`}>
         <div className="book-cover">
           <CoverImage book={book} />
-          <div className="book-cover-sheen" />
-          <span className={`format-chip format-${book.format}`}>{book.format === 'epub' ? 'ePUB' : 'PDF'}</span>
-          {percent > 0 && percent < 1 && (
-            <div className="cover-progress">
-              <div className="cover-progress-fill" style={{ width: `${Math.round(percent * 100)}%` }} />
-            </div>
-          )}
-          {percent >= 1 && <span className="finished-chip">Finished</span>}
         </div>
       </Link>
+
+      {percent > 0 && percent < 1 && (
+        <div
+          className="book-progress"
+          role="progressbar"
+          aria-valuenow={Math.round(percent * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${Math.round(percent * 100)}% read`}
+        >
+          <div className="book-progress-fill" style={{ width: `${Math.round(percent * 100)}%` }} />
+        </div>
+      )}
 
       <div className="book-meta">
         <div className="book-text">
           <Link to={`/read/${book.id}`} className="book-title" title={book.title}>{book.title}</Link>
           {book.author && <span className="book-author" title={book.author}>{book.author}</span>}
+          <span className="book-caption">
+            {book.format === 'epub' ? 'ePUB' : 'PDF'}
+            {percent >= 1 && <em className="book-finished"> · Finished</em>}
+          </span>
         </div>
         <div
           className={`book-menu ${menuOpen ? 'open' : ''}`}
