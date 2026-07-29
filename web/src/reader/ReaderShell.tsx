@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconFocus, IconType } from '../components/Icons';
+import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconFullscreen, IconFullscreenExit, IconType } from '../components/Icons';
 
 export interface ShellTocEntry {
   label: string;
@@ -40,6 +40,7 @@ export default function ReaderShell({
   stageBackground, chromeDark,
 }: Props) {
   const [focus, setFocus] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const chromeVisible = !focus;
@@ -49,10 +50,33 @@ export default function ReaderShell({
     setSettingsOpen(false);
   }, []);
 
-  const enterFocus = useCallback(() => {
-    closePanels();
-    setFocus(true);
+  // Full screen = immersive reading: browser fullscreen + controls tucked away.
+  // Center tap still shows/hides controls independently while fullscreen.
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        closePanels();
+        await document.documentElement.requestFullscreen();
+        setFocus(true);
+      }
+    } catch {
+      // Fullscreen unavailable (e.g. iOS Safari) — fall back to hiding controls
+      closePanels();
+      setFocus(true);
+    }
   }, [closePanels]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      if (!fs) setFocus(false); // leaving fullscreen brings the controls back
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   // Center tap on the page toggles focus mode
   useEffect(() => {
@@ -128,11 +152,13 @@ export default function ReaderShell({
           </button>
           <button
             className="icon-btn"
-            aria-label="Focus mode"
-            title="Focus mode — hides all controls. Tap the page or press Esc to bring them back."
-            onClick={enterFocus}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+            title={isFullscreen
+              ? 'Exit full screen'
+              : 'Full screen — immersive reading. Tap the page to show or hide controls; Esc to leave.'}
+            onClick={toggleFullscreen}
           >
-            <IconFocus />
+            {isFullscreen ? <IconFullscreenExit /> : <IconFullscreen />}
           </button>
         </div>
       </header>

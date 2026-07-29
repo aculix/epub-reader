@@ -91,9 +91,15 @@ export const IconBookmark = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><path d="M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1Z" /></svg>
 );
 
-export const IconFocus = (p: SVGProps<SVGSVGElement>) => (
+export const IconFullscreen = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M9 4.5H6a1.5 1.5 0 0 0-1.5 1.5v3M15 4.5h3A1.5 1.5 0 0 1 19.5 6v3M9 19.5H6A1.5 1.5 0 0 1 4.5 18v-3M15 19.5h3a1.5 1.5 0 0 0 1.5-1.5v-3" />
+  </svg>
+);
+
+export const IconFullscreenExit = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M9 4.5v3A1.5 1.5 0 0 1 7.5 9h-3M15 4.5v3A1.5 1.5 0 0 0 16.5 9h3M9 19.5v-3A1.5 1.5 0 0 0 7.5 15h-3M15 19.5v-3a1.5 1.5 0 0 1 1.5-1.5h3" />
   </svg>
 );
 
