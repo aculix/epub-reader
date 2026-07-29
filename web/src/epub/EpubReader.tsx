@@ -281,7 +281,6 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     setGroup(g);
     applyGroup(g, true);
     setTurnFx({ id: ++turnCounter.current, dir });
-    window.dispatchEvent(new Event('quire:poke-chrome'));
     scheduleSave();
   }, [applyGroup, scheduleSave]);
 
@@ -430,7 +429,6 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }, { passive: true });
 
     doc.addEventListener('keydown', (e) => handleKey(e as KeyboardEvent, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl'));
-    doc.addEventListener('mousemove', () => window.dispatchEvent(new Event('quire:poke-chrome')), { passive: true });
   }, [measureAndPlace]);
 
   // Parent-level keyboard

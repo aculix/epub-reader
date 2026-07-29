@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconType } from '../components/Icons';
+import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconFocus, IconType } from '../components/Icons';
 
 export interface ShellTocEntry {
   label: string;
@@ -27,62 +27,58 @@ interface Props {
   chromeDark?: boolean;
 }
 
-const IDLE_HIDE_MS = 3800;
-
+/**
+ * Reader chrome lives in the page's own margins — a running head up top and
+ * a folio line below, on the same paper as the text. Nothing overlays or
+ * fades over the content. Visibility is an explicit choice: focus mode hides
+ * everything and only a deliberate center tap (or Esc) brings it back —
+ * moving the mouse never pops controls open.
+ */
 export default function ReaderShell({
   bookTitle, contextLabel, positionLabel, percent, onSeek,
   onPrev, onNext, atStart, atEnd, toc, settingsPanel, children,
   stageBackground, chromeDark,
 }: Props) {
-  const [chromeVisible, setChromeVisible] = useState(true);
+  const [focus, setFocus] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const anyPanelOpen = tocOpen || settingsOpen;
-  const anyPanelOpenRef = useRef(anyPanelOpen);
-  anyPanelOpenRef.current = anyPanelOpen;
+  const chromeVisible = !focus;
 
-  const poke = useCallback(() => {
-    setChromeVisible(true);
-    clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => {
-      if (!anyPanelOpenRef.current) setChromeVisible(false);
-    }, IDLE_HIDE_MS);
+  const closePanels = useCallback(() => {
+    setTocOpen(false);
+    setSettingsOpen(false);
   }, []);
 
-  useEffect(() => {
-    poke();
-    return () => clearTimeout(idleTimer.current);
-  }, [poke]);
+  const enterFocus = useCallback(() => {
+    closePanels();
+    setFocus(true);
+  }, [closePanels]);
 
-  // Toggling chrome from the stage (center tap) is exposed via a custom event
+  // Center tap on the page toggles focus mode
   useEffect(() => {
-    const onToggle = () => {
-      setChromeVisible((v) => {
-        if (v) {
-          clearTimeout(idleTimer.current);
-          return false;
-        }
-        poke();
-        return true;
-      });
-    };
-    const onPoke = () => poke();
+    const onToggle = () => setFocus((f) => !f);
     window.addEventListener('quire:toggle-chrome', onToggle);
-    window.addEventListener('quire:poke-chrome', onPoke);
-    return () => {
-      window.removeEventListener('quire:toggle-chrome', onToggle);
-      window.removeEventListener('quire:poke-chrome', onPoke);
-    };
-  }, [poke]);
+    return () => window.removeEventListener('quire:toggle-chrome', onToggle);
+  }, []);
 
-  const closePanels = () => { setTocOpen(false); setSettingsOpen(false); };
+  // Esc: close the topmost panel first, then leave focus mode
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (tocOpen || settingsOpen) {
+        closePanels();
+      } else if (focus) {
+        setFocus(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tocOpen, settingsOpen, focus, closePanels]);
 
   return (
     <div
       className={`reader ${chromeDark ? 'reader-chrome-dark' : ''} ${chromeVisible ? 'chrome-on' : 'chrome-off'}`}
       style={{ background: stageBackground, '--reader-bg': stageBackground } as React.CSSProperties}
-      onMouseMove={poke}
     >
       <div className="reader-stage-wrap">{children}</div>
 
@@ -106,7 +102,7 @@ export default function ReaderShell({
         <IconChevronRight />
       </button>
 
-      {/* top chrome */}
+      {/* running head */}
       <header className={`reader-top ${chromeVisible ? '' : 'hidden-bar'}`}>
         <div className="reader-top-left">
           <Link to="/" className="icon-btn" aria-label="Back to library"><IconArrowLeft /></Link>
@@ -119,21 +115,29 @@ export default function ReaderShell({
           <button
             className={`icon-btn ${tocOpen ? 'icon-btn-active' : ''}`}
             aria-label="Table of contents"
-            onClick={() => { setSettingsOpen(false); setTocOpen((v) => !v); poke(); }}
+            onClick={() => { setSettingsOpen(false); setTocOpen((v) => !v); }}
           >
             <IconContents />
           </button>
           <button
             className={`icon-btn ${settingsOpen ? 'icon-btn-active' : ''}`}
             aria-label="Display settings"
-            onClick={() => { setTocOpen(false); setSettingsOpen((v) => !v); poke(); }}
+            onClick={() => { setTocOpen(false); setSettingsOpen((v) => !v); }}
           >
             <IconType />
+          </button>
+          <button
+            className="icon-btn"
+            aria-label="Focus mode"
+            title="Focus mode — hides all controls. Tap the page or press Esc to bring them back."
+            onClick={enterFocus}
+          >
+            <IconFocus />
           </button>
         </div>
       </header>
 
-      {/* bottom chrome */}
+      {/* folio */}
       <footer className={`reader-bottom ${chromeVisible ? '' : 'hidden-bar'}`}>
         <div className="scrubber-row">
           <input

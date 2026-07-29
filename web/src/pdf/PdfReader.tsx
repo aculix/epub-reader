@@ -149,7 +149,6 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
     setDir(direction ?? (target >= pageRef.current ? 1 : -1));
     setPage(target);
     scheduleSave(target);
-    window.dispatchEvent(new Event('quire:poke-chrome'));
   }, [scheduleSave]);
 
   const next = useCallback(() => {
@@ -331,7 +330,8 @@ function PdfPage({
         if (cancelled) return;
         const base = pdfPage.getViewport({ scale: 1 });
         const availW = (stageSize.w - 64 - (cols - 1) * 20) / cols;
-        const availH = stageSize.h - 44;
+        // Clear the running head and folio — chrome lives in the margins now
+        const availH = stageSize.h - 118;
         const fit = Math.min(availW / base.width, availH / base.height);
         const scale = fit * zoom;
         let dpr = Math.min(window.devicePixelRatio || 1, 2.5);

@@ -162,28 +162,19 @@
   transition: opacity 0.35s ease, transform 0.35s var(--ease-out);
 }
 
-/* Bars are gradients of the same paper the text sits on — one surface. */
+/* Chrome sits IN the page margins — a running head and folio on the same
+   paper as the text. No backgrounds, no gradients, nothing overlays text. */
 .reader-top {
   top: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  background: linear-gradient(
-    var(--reader-bg),
-    color-mix(in srgb, var(--reader-bg) 78%, transparent) 62%,
-    transparent
-  );
+  padding: 8px 14px;
 }
 
 .reader-bottom {
   bottom: 0;
   flex-direction: column;
-  padding: 6px 22px 12px;
-  background: linear-gradient(
-    transparent,
-    color-mix(in srgb, var(--reader-bg) 78%, transparent) 38%,
-    var(--reader-bg)
-  );
+  padding: 0 22px 10px;
 }
 
 .hidden-bar {
