@@ -272,7 +272,7 @@
   margin-top: -5px;
   border-radius: 50%;
   background: var(--accent);
-  border: 2.5px solid #fdf9f0;
+  border: 2.5px solid var(--surface, #fdf9f0);
   box-shadow: 0 1px 4px rgba(30, 20, 8, 0.3);
   transition: transform 0.15s var(--ease-spring);
 }
@@ -299,7 +299,7 @@
   height: 14px;
   border-radius: 50%;
   background: var(--accent);
-  border: 2.5px solid #fdf9f0;
+  border: 2.5px solid var(--surface, #fdf9f0);
   box-shadow: 0 1px 4px rgba(30, 20, 8, 0.3);
 }
 

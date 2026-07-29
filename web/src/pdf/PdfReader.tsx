@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { api, type Book, type PdfLocation } from '../lib/api';
 import ReaderShell, { type ShellTocEntry } from '../reader/ReaderShell';
+import { READER_THEMES } from '../reader/readerSettings';
 import { clamp } from '../lib/format';
 import { IconZoomIn, IconZoomOut } from '../components/Icons';
 
@@ -227,6 +228,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
       toc={toc}
       stageBackground={stageTheme.stage}
       chromeDark={stageTheme.chromeDark}
+      themeVars={READER_THEMES[settings.theme === 'dusk' ? 'dusk' : 'paper'].vars}
       settingsPanel={
         <div className="settings-panel">
           <div className="settings-row">

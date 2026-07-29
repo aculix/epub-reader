@@ -25,6 +25,9 @@ interface Props {
   children: ReactNode; // the reading stage
   stageBackground: string;
   chromeDark?: boolean;
+  /** Local design-token overrides so reader chrome follows the reader theme,
+      independent of the app-level light/dark toggle. */
+  themeVars?: Record<string, string>;
 }
 
 /**
@@ -37,7 +40,7 @@ interface Props {
 export default function ReaderShell({
   bookTitle, contextLabel, positionLabel, percent, onSeek,
   onPrev, onNext, atStart, atEnd, toc, settingsPanel, children,
-  stageBackground, chromeDark,
+  stageBackground, chromeDark, themeVars,
 }: Props) {
   const [focus, setFocus] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -78,6 +81,15 @@ export default function ReaderShell({
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
 
+  // Let document-level effects (paper-grain overlay) match the reading
+  // surface rather than the app theme while a book is open.
+  useEffect(() => {
+    document.documentElement.dataset.readerSurface = chromeDark ? 'dark' : 'light';
+    return () => {
+      delete document.documentElement.dataset.readerSurface;
+    };
+  }, [chromeDark]);
+
   // Center tap on the page toggles focus mode
   useEffect(() => {
     const onToggle = () => setFocus((f) => !f);
@@ -102,7 +114,7 @@ export default function ReaderShell({
   return (
     <div
       className={`reader ${chromeDark ? 'reader-chrome-dark' : ''} ${chromeVisible ? 'chrome-on' : 'chrome-off'}`}
-      style={{ background: stageBackground, '--reader-bg': stageBackground } as React.CSSProperties}
+      style={{ background: stageBackground, '--reader-bg': stageBackground, ...themeVars } as React.CSSProperties}
     >
       <div className="reader-stage-wrap">{children}</div>
 

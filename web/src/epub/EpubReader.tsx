@@ -511,6 +511,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       toc={toc}
       stageBackground={theme.stage}
       chromeDark={settings.theme === 'dusk'}
+      themeVars={theme.vars}
       settingsPanel={
         <EpubSettingsPanel settings={settings} update={updateSettings} />
       }
