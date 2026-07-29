@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { IconArrowLeft, IconChevronLeft, IconChevronRight, IconClose, IconContents, IconFullscreen, IconFullscreenExit, IconType } from '../components/Icons';
+import { useAutoHideScrollbar } from '../lib/useAutoHideScrollbar';
 
 export interface ShellTocEntry {
   label: string;
@@ -50,6 +51,7 @@ export default function ReaderShell({
   const [tocOpen, setTocOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const chromeVisible = !focus;
+  const tocListRef = useAutoHideScrollbar<HTMLDivElement>();
 
   const closePanels = useCallback(() => {
     setTocOpen(false);
@@ -221,7 +223,7 @@ export default function ReaderShell({
                 <h3>Contents</h3>
                 <button className="icon-btn" onClick={closePanels} aria-label="Close contents"><IconClose /></button>
               </div>
-              <div className="toc-list">
+              <div className="toc-list quire-scroll" ref={tocListRef}>
                 {toc.map((entry, i) => (
                   <button
                     key={i}

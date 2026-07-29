@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import type { Book } from '../../lib/api';
 import { formatBytes, formatYear } from '../../lib/format';
+import { useAutoHideScrollbar } from '../../lib/useAutoHideScrollbar';
 import { CoverImage } from './BookCard';
 import { IconClose, IconRefresh, IconTrash } from '../Icons';
 
@@ -15,6 +16,7 @@ interface Props {
 
 export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: Props) {
   const [refreshing, setRefreshing] = useState(false);
+  const descriptionRef = useAutoHideScrollbar<HTMLDivElement>();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -72,7 +74,7 @@ export default function BookDetailModal({ book, onClose, onRefresh, onDelete }: 
           {book.author && <p className="detail-author">by {book.author}</p>}
 
           {book.description ? (
-            <div className="detail-description">{book.description.replace(/<[^>]+>/g, ' ')}</div>
+            <div className="detail-description quire-scroll" ref={descriptionRef}>{book.description.replace(/<[^>]+>/g, ' ')}</div>
           ) : (
             <p className="detail-description detail-description-empty">
               No description found for this book yet. Try “Refresh metadata” to search again.

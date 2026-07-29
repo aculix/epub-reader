@@ -5,6 +5,7 @@ import { api, type Book, type PdfLocation } from '../lib/api';
 import ReaderShell, { type ShellTocEntry } from '../reader/ReaderShell';
 import { READER_THEMES } from '../reader/readerSettings';
 import { clamp } from '../lib/format';
+import { useAutoHideScrollbar } from '../lib/useAutoHideScrollbar';
 import { IconZoomIn, IconZoomOut } from '../components/Icons';
 
 type PdfTheme = 'paper' | 'dusk';
@@ -59,6 +60,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const stageSize = useStageSize(stageRef);
+  useAutoHideScrollbar(stageRef);
   const pageRef = useRef(page);
   pageRef.current = page;
   const docRef = useRef<PDFDocumentProxy | null>(null);
@@ -268,7 +270,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
       }
     >
       <div
-        className={`pdf-stage ${zoom > 1 ? 'pdf-zoomed' : ''}`}
+        className={`pdf-stage quire-scroll ${zoom > 1 ? 'pdf-zoomed' : ''}`}
         ref={stageRef}
         onWheel={onWheel}
         onClick={(e) => {
