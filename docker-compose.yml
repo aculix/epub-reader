@@ -1,0 +1,12 @@
+services:
+  quire:
+    build: .
+    container_name: quire
+    ports:
+      - "3391:3391"
+    volumes:
+      - quire-data:/data
+    restart: unless-stopped
+
+volumes:
+  quire-data:

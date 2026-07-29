@@ -1,0 +1,28 @@
+{
+  "name": "quire",
+  "version": "1.0.0",
+  "description": "Quire — a beautiful self-hosted ebook reader for ePUB and PDF",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n server,web -c yellow,cyan \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "node server/index.js",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "start": "NODE_ENV=production node server/index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.2",
+    "fast-xml-parser": "^4.5.3",
+    "jszip": "^3.10.1",
+    "multer": "^2.0.1",
+    "nanoid": "^5.1.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
