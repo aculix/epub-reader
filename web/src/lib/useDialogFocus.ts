@@ -75,10 +75,12 @@ export function useDialogFocus<T extends HTMLElement>(open: boolean) {
         const focusIsLoose = !current || current === document.body || container.contains(current);
         if (focusIsLoose) trigger.focus();
         if (++attempts < 8 && document.activeElement !== trigger) {
+          // Both schedulers: rAF is throttled in background tabs, timeouts are not
           requestAnimationFrame(restore);
+          setTimeout(restore, 32);
         }
       };
-      requestAnimationFrame(restore);
+      restore();
     };
   }, [open]);
 

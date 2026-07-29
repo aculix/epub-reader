@@ -40,14 +40,22 @@ export default function LibraryPage() {
   });
 
   useEffect(() => {
+    // A multi-file drop lands in ONE render, so collect every stage change in
+    // this pass into a single message — separate setAnnounce calls would
+    // collapse and only the last would ever be spoken.
+    const messages: string[] = [];
     for (const u of uploads) {
       const prev = announcedStages.current.get(u.key);
       if (prev === u.stage) continue;
       announcedStages.current.set(u.key, u.stage);
-      if (!prev) setAnnounce(`Uploading ${u.displayTitle}`);
-      else if (u.stage === 'cataloguing') setAnnounce(`Fetching book info for ${u.displayTitle}`);
-      else if (u.stage === 'error') setAnnounce(`Upload failed for ${u.displayTitle}. ${u.error ?? ''}`);
+      if (!prev) messages.push(`Uploading ${u.displayTitle}`);
+      else if (u.stage === 'cataloguing') messages.push(`Fetching book info for ${u.displayTitle}`);
+      else if (u.stage === 'error') messages.push(`Upload failed for ${u.displayTitle}. ${u.error ?? ''}`);
     }
+    for (const key of announcedStages.current.keys()) {
+      if (!uploads.some((u) => u.key === key)) announcedStages.current.delete(key);
+    }
+    if (messages.length) setAnnounce(messages.join('. '));
   }, [uploads]);
 
   // Every dropped/picked file gets visible feedback — never a silent no-op

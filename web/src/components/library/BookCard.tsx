@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
 import type { Book } from '../../lib/api';
@@ -47,7 +47,19 @@ export function CoverImage({ book, sizes }: { book: Book; sizes?: string }) {
 
 export default function BookCard({ book, index, onDetails, onRefresh, onDelete }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const percent = book.progress?.percent ?? 0;
+
+  /**
+   * Return focus to the menu button before opening a dialog: the menu item
+   * that was clicked unmounts with the menu, and a dialog opening from a
+   * detached element has no trigger left to restore focus to.
+   */
+  const runFromMenu = (action: () => void) => {
+    menuBtnRef.current?.focus();
+    setMenuOpen(false);
+    action();
+  };
 
   return (
     <motion.article
@@ -97,6 +109,7 @@ export default function BookCard({ book, index, onDetails, onRefresh, onDelete }
           }}
         >
           <button
+            ref={menuBtnRef}
             className="icon-btn book-menu-btn"
             aria-label={`Options for ${book.title}`}
             aria-expanded={menuOpen}
@@ -112,9 +125,9 @@ export default function BookCard({ book, index, onDetails, onRefresh, onDelete }
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
             >
-              <button onClick={() => { setMenuOpen(false); onDetails(book); }}><IconInfo /> About this book</button>
-              <button onClick={() => { setMenuOpen(false); onRefresh(book); }}><IconRefresh /> Refresh metadata</button>
-              <button className="danger" onClick={() => { setMenuOpen(false); onDelete(book); }}><IconTrash /> Remove</button>
+              <button onClick={() => runFromMenu(() => onDetails(book))}><IconInfo /> About this book</button>
+              <button onClick={() => runFromMenu(() => onRefresh(book))}><IconRefresh /> Refresh metadata</button>
+              <button className="danger" onClick={() => runFromMenu(() => onDelete(book))}><IconTrash /> Remove</button>
             </motion.div>
           )}
         </div>
