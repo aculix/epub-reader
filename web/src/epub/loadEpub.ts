@@ -58,6 +58,7 @@ function parseXml(text: string): Document {
 
 export class EpubBook {
   title = 'Untitled';
+  language = 'en';
   spine: SpineItem[] = [];
   toc: TocEntry[] = [];
   totalBytes = 0;
@@ -99,11 +100,13 @@ export class EpubBook {
     if (!opfText) throw new Error('Not a valid ePUB (missing package document)');
     const opf = parseXml(opfText);
 
-    // dc:title — namespace-safe lookup
+    // dc:title / dc:language — namespace-safe lookup
     for (const el of Array.from(opf.getElementsByTagName('*'))) {
-      if (el.localName === 'title' && el.textContent?.trim()) {
+      if (el.localName === 'title' && this.title === 'Untitled' && el.textContent?.trim()) {
         this.title = el.textContent.trim();
-        break;
+      }
+      if (el.localName === 'language' && el.textContent?.trim()) {
+        this.language = el.textContent.trim().split('-')[0];
       }
     }
 
@@ -350,9 +353,9 @@ export class EpubBook {
     const bodyClass = bodyEl.getAttribute('class') || '';
 
     const html = [
-      '<!DOCTYPE html><html><head><meta charset="utf-8"/>',
+      `<!DOCTYPE html><html lang="${this.language}"><head><meta charset="utf-8"/>`,
       ...headParts,
-      '</head><body class="', bodyClass, '"><div id="quire-root">', bodyHtml, '</div></body></html>',
+      '</head><body id="quire-body" class="', bodyClass, '"><div id="quire-root">', bodyHtml, '</div></body></html>',
     ].join('');
 
     const prepared: PreparedChapter = { html };

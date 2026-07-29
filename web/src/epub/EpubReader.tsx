@@ -16,10 +16,31 @@ const FONT_STACKS: Record<ReaderFont, string> = {
   sans: `'Schibsted Grotesk', 'Helvetica Neue', Arial, sans-serif`,
 };
 
-const PAD_H = 52;
-const PAD_V = 48;
-const COL_GAP = 64;
+const PAD_V = 64;
+const COL_GAP = 72;
 const TURN_MS = 330;
+// The reading surface fills the viewport (Play Books-style, no floating "book"
+// object) — text columns are centred with generous margins on wide screens.
+const MAX_SPREAD_W = 1280;
+const MAX_SINGLE_W = 720;
+
+/**
+ * Page geometry. The content box is sized to EXACTLY cols*colW + (cols-1)*gap
+ * (leftover pixels absorbed into padding) so the browser's computed column
+ * width matches ours — otherwise fractional column widths make translateX
+ * drift off the column grid and clip glyphs at the page edge.
+ */
+function computeGeometry(stage: { w: number; h: number }, spread: 'auto' | 'single' | 'double') {
+  const cols = spread === 'single' ? 1 : spread === 'double' ? 2 : stage.w >= 920 ? 2 : 1;
+  const maxW = cols === 2 ? MAX_SPREAD_W : MAX_SINGLE_W;
+  const basePad = stage.w < 640 ? 28 : Math.max(64, Math.round((stage.w - maxW) / 2));
+  const innerW = stage.w - basePad * 2;
+  const colW = Math.floor((innerW - (cols - 1) * COL_GAP) / cols);
+  const leftover = innerW - (cols * colW + (cols - 1) * COL_GAP);
+  const padLeft = basePad + Math.floor(leftover / 2);
+  const padRight = basePad + (leftover - Math.floor(leftover / 2));
+  return { cols, colW, padLeft, padRight, innerH: stage.h - PAD_V * 2, stepW: cols * (colW + COL_GAP) };
+}
 
 interface Layout {
   cols: number; // visible columns (1 or 2)
@@ -89,18 +110,27 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const [srcdoc, setSrcdoc] = useState<string | null>(null);
   const stageSize = useStageSize(stageRef);
 
+  const geometry = useMemo(
+    () => (stageSize ? computeGeometry(stageSize, settings.spread) : null),
+    [stageSize, settings.spread]
+  );
+
   const injectedCss = useMemo(() => {
-    if (!stageSize) return '';
-    const cols = settings.spread === 'single' ? 1 : settings.spread === 'double' ? 2 : stageSize.w >= 920 ? 2 : 1;
-    const innerW = stageSize.w - PAD_H * 2;
-    const colW = Math.floor((innerW - (cols - 1) * COL_GAP) / cols);
-    const innerH = stageSize.h - PAD_V * 2;
+    if (!stageSize || !geometry) return '';
+    const { colW, padLeft, padRight, innerH } = geometry;
     return `
       @font-face { font-family: 'Literata'; src: url('${literataUrl}') format('woff2-variations'); font-weight: 200 900; font-style: normal; font-display: swap; }
       @font-face { font-family: 'Literata'; src: url('${literataItalicUrl}') format('woff2-variations'); font-weight: 200 900; font-style: italic; font-display: swap; }
       @font-face { font-family: 'Schibsted Grotesk'; src: url('${sansUrl}') format('woff2-variations'); font-weight: 400 900; font-style: normal; font-display: swap; }
       html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent !important; }
-      body { padding: ${PAD_V}px ${PAD_H}px; box-sizing: border-box; }
+      /* id + !important so publisher body classes (e.g. Calibre's) can't shift the page grid */
+      #quire-body {
+        margin: 0 !important;
+        padding: ${PAD_V}px ${padRight}px ${PAD_V}px ${padLeft}px !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
       #quire-root {
         height: ${innerH}px;
         column-width: ${colW}px;
@@ -117,6 +147,21 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       #quire-root :where(p, li, blockquote, dd, dt) {
         line-height: inherit;
       }
+      ${!settings.pubStyles ? `
+      /* "Quire style": publisher fonts & colors are normalized for legibility.
+         Structure (margins, indents, sizes, italics, small-caps) is preserved. */
+      #quire-root :where(*):not(pre, code, kbd, samp, svg, svg *) {
+        font-family: inherit !important;
+        color: inherit !important;
+        background-color: transparent !important;
+      }
+      #quire-root :where(p, li, blockquote, dd) {
+        hyphens: auto;
+        -webkit-hyphens: auto;
+        hyphenate-limit-chars: 7 4 3;
+        overflow-wrap: break-word;
+      }
+      ` : ''}
       ${settings.theme === 'dusk' ? `#quire-root :where(p, li, blockquote, h1, h2, h3, h4, h5, h6, span, div, em, strong, i, b, small, td, th, dt, dd, figcaption) { color: inherit !important; background: transparent !important; }` : ''}
       #quire-root :where(h1, h2, h3, h4, h5, h6) { break-after: avoid; }
       #quire-root :where(img, svg, image, video) {
@@ -132,7 +177,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       #quire-root a[data-quire-href] { cursor: pointer; text-decoration: underline; }
       ::selection { background: ${theme.accent}44; }
     `;
-  }, [stageSize, settings, theme]);
+  }, [stageSize, geometry, settings, theme]);
 
   useEffect(() => {
     if (!epub || !stageSize) return;
@@ -169,13 +214,11 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     const root = doc?.getElementById('quire-root');
     if (!doc || !root || !stageSize) return;
 
-    const cols = settings.spread === 'single' ? 1 : settings.spread === 'double' ? 2 : stageSize.w >= 920 ? 2 : 1;
-    const innerW = stageSize.w - PAD_H * 2;
-    const colW = Math.floor((innerW - (cols - 1) * COL_GAP) / cols);
+    const { cols, colW, stepW, padLeft } = computeGeometry(stageSize, settings.spread);
     const totalW = root.scrollWidth;
     const totalColumns = Math.max(1, Math.round((totalW + COL_GAP) / (colW + COL_GAP)));
     const groups = Math.max(1, Math.ceil(totalColumns / cols));
-    const lay: Layout = { cols, colW, stepW: cols * (colW + COL_GAP), groups, totalColumns };
+    const lay: Layout = { cols, colW, stepW, groups, totalColumns };
     layoutRef.current = lay;
     setLayout(lay);
 
@@ -187,7 +230,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     } else if (t.hash) {
       const el = doc.getElementById(t.hash.slice(1));
       if (el) {
-        const left = (el as HTMLElement).offsetLeft;
+        const left = Math.max(0, (el as HTMLElement).offsetLeft - padLeft);
         g = clamp(Math.floor(left / (colW + COL_GAP) / cols), 0, groups - 1);
       }
     } else if (t.fraction != null) {
@@ -457,8 +500,13 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
             />
           </motion.div>
         )}
-        {layout && layout.cols === 2 && (
-          <div className="page-gutter" aria-hidden />
+        {geometry && (
+          <>
+            {/* The column strip slides beneath the page margins — mask them
+                with the same paper so neighbouring columns never peek. */}
+            <div className="page-mask" style={{ left: 0, width: geometry.padLeft - 10, background: theme.bg }} aria-hidden />
+            <div className="page-mask" style={{ right: 0, width: geometry.padRight - 10, background: theme.bg }} aria-hidden />
+          </>
         )}
         <AnimatePresence>
           {turnFx && (
@@ -600,6 +648,14 @@ function EpubSettingsPanel({
               {label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <span className="settings-label">Style</span>
+        <div className="seg-row">
+          <button className={`seg ${!settings.pubStyles ? 'seg-active' : ''}`} onClick={() => update({ pubStyles: false })}>Quire</button>
+          <button className={`seg ${settings.pubStyles ? 'seg-active' : ''}`} onClick={() => update({ pubStyles: true })}>Original</button>
         </div>
       </div>
     </div>

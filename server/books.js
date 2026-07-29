@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 import db from './db.js';
 import { DATA_DIR, MAX_UPLOAD_MB } from './config.js';
 import { extractEpubMetadata } from './epubMeta.js';
-import { lookupGoogleBooks, downloadCover } from './enrich.js';
+import { lookupMetadata, downloadCover } from './enrich.js';
 
 const router = Router();
 
@@ -82,7 +82,7 @@ function saveCover(id, cover) {
 /** Merge Google Books data into what we extracted; embedded fields win for title/author. */
 async function enrichBook(base) {
   try {
-    const found = await lookupGoogleBooks({ title: base.title, author: base.author, isbn: base.isbn });
+    const found = await lookupMetadata({ title: base.title, author: base.author, isbn: base.isbn });
     if (!found) return { fields: {}, cover: null };
     const fields = {
       title: base.title || found.title,

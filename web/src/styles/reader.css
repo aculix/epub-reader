@@ -14,19 +14,13 @@
 
 /* ---------- stages ---------- */
 
+/* The reading surface IS the viewport — one continuous sheet of paper,
+   chrome floats over the same surface (Play Books-style, no framed "book"). */
 .epub-stage {
   position: absolute;
-  inset: 46px 68px 58px;
-  border-radius: 10px;
-  box-shadow:
-    0 1px 3px rgba(30, 20, 8, 0.12),
-    0 18px 50px rgba(30, 20, 8, 0.18);
+  inset: 0;
   overflow: hidden;
   transition: background-color 0.4s ease;
-}
-
-.reader-chrome-dark .epub-stage {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), 0 18px 50px rgba(0, 0, 0, 0.55);
 }
 
 .epub-frame-wrap,
@@ -38,22 +32,13 @@
   border: none;
 }
 
-.page-gutter {
+.page-mask {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
-  width: 90px;
-  transform: translateX(-50%);
+  z-index: 5;
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(30, 20, 8, 0.05) 38%,
-    rgba(30, 20, 8, 0.1) 50%,
-    rgba(30, 20, 8, 0.05) 62%,
-    transparent
-  );
+  transition: background-color 0.4s ease;
 }
 
 .turn-shadow {
@@ -65,9 +50,9 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(25, 16, 6, 0.1) 35%,
-    rgba(25, 16, 6, 0.16) 50%,
-    rgba(25, 16, 6, 0.1) 65%,
+    rgba(25, 16, 6, 0.05) 35%,
+    rgba(25, 16, 6, 0.09) 50%,
+    rgba(25, 16, 6, 0.05) 65%,
     transparent
   );
   filter: blur(2px);
@@ -90,7 +75,7 @@
 
 .pdf-view {
   display: flex;
-  gap: 18px;
+  gap: 20px;
   align-items: center;
   justify-content: center;
 }
@@ -103,13 +88,13 @@
 .pdf-page-canvas {
   display: block;
   background: white;
-  border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(25, 16, 6, 0.18), 0 16px 44px rgba(25, 16, 6, 0.22);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(25, 16, 6, 0.06), 0 2px 14px rgba(25, 16, 6, 0.1);
 }
 
 .pdf-night .pdf-page-canvas {
   filter: invert(0.92) hue-rotate(180deg);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 44px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 2px 14px rgba(0, 0, 0, 0.4);
 }
 
 /* ---------- loading / error ---------- */
@@ -174,27 +159,28 @@
   transition: opacity 0.35s ease, transform 0.35s var(--ease-out);
 }
 
+/* Bars are gradients of the same paper the text sits on — one surface. */
 .reader-top {
   top: 0;
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px;
-  background: linear-gradient(rgba(246, 241, 231, 0.94), rgba(246, 241, 231, 0.72) 65%, transparent);
-}
-
-.reader-chrome-dark .reader-top {
-  background: linear-gradient(rgba(10, 8, 6, 0.9), rgba(10, 8, 6, 0.6) 65%, transparent);
+  background: linear-gradient(
+    var(--reader-bg),
+    color-mix(in srgb, var(--reader-bg) 78%, transparent) 62%,
+    transparent
+  );
 }
 
 .reader-bottom {
   bottom: 0;
   flex-direction: column;
   padding: 6px 22px 12px;
-  background: linear-gradient(transparent, rgba(246, 241, 231, 0.75) 40%, rgba(246, 241, 231, 0.95));
-}
-
-.reader-chrome-dark .reader-bottom {
-  background: linear-gradient(transparent, rgba(10, 8, 6, 0.65) 40%, rgba(10, 8, 6, 0.92));
+  background: linear-gradient(
+    transparent,
+    color-mix(in srgb, var(--reader-bg) 78%, transparent) 38%,
+    var(--reader-bg)
+  );
 }
 
 .hidden-bar {
@@ -611,11 +597,5 @@
 /* ---------- responsive ---------- */
 
 @media (max-width: 900px) {
-  .epub-stage {
-    inset: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
   .page-edge-btn { display: none; }
 }

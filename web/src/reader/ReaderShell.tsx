@@ -81,7 +81,7 @@ export default function ReaderShell({
   return (
     <div
       className={`reader ${chromeDark ? 'reader-chrome-dark' : ''} ${chromeVisible ? 'chrome-on' : 'chrome-off'}`}
-      style={{ background: stageBackground }}
+      style={{ background: stageBackground, '--reader-bg': stageBackground } as React.CSSProperties}
       onMouseMove={poke}
     >
       <div className="reader-stage-wrap">{children}</div>

@@ -15,9 +15,10 @@ interface PdfSettings {
   night: boolean; // invert page colors for dark-room reading
 }
 
+// Same paper tones as the ePUB reader themes — one cohesive surface.
 const PDF_STAGE: Record<PdfTheme, { stage: string; chromeDark: boolean }> = {
-  paper: { stage: '#eee7d8', chromeDark: false },
-  dusk: { stage: '#12100d', chromeDark: true },
+  paper: { stage: '#f9f5ec', chromeDark: false },
+  dusk: { stage: '#181512', chromeDark: true },
 };
 
 const SETTINGS_KEY = 'quire:pdf-settings';
@@ -326,8 +327,8 @@ function PdfPage({
         const pdfPage = await doc.getPage(pageNum);
         if (cancelled) return;
         const base = pdfPage.getViewport({ scale: 1 });
-        const availW = (stageSize.w - 90 - (cols - 1) * 18) / cols;
-        const availH = stageSize.h - 56;
+        const availW = (stageSize.w - 64 - (cols - 1) * 20) / cols;
+        const availH = stageSize.h - 44;
         const fit = Math.min(availW / base.width, availH / base.height);
         const scale = fit * zoom;
         const dpr = Math.min(window.devicePixelRatio || 1, 2.5);

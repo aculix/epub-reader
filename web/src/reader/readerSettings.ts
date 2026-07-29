@@ -10,6 +10,8 @@ export interface ReaderSettings {
   fontSize: number; // px
   lineHeight: number;
   spread: SpreadMode;
+  /** false = "Quire style": override publisher fonts/colors for clean, legible pages */
+  pubStyles: boolean;
 }
 
 export const READER_THEMES: Record<ReaderTheme, { bg: string; stage: string; text: string; faint: string; accent: string; label: string }> = {
@@ -24,6 +26,7 @@ const DEFAULTS: ReaderSettings = {
   fontSize: 19,
   lineHeight: 1.62,
   spread: 'auto',
+  pubStyles: false,
 };
 
 const KEY = 'quire:reader-settings';
