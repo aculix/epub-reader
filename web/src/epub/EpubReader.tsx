@@ -5,6 +5,7 @@ import { EpubBook } from './loadEpub';
 import ReaderShell, { type ShellTocEntry } from '../reader/ReaderShell';
 import { READER_THEMES, useReaderSettings, type ReaderFont, type ReaderTheme } from '../reader/readerSettings';
 import { clamp } from '../lib/format';
+import { clearCurl, prepareCurl, runCurl, setCurlProgress, type CurlRun } from './pageCurl';
 
 import literataUrl from '@fontsource-variable/literata/files/literata-latin-wght-normal.woff2?url';
 import literataItalicUrl from '@fontsource-variable/literata/files/literata-latin-wght-italic.woff2?url';
@@ -60,16 +61,22 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const [group, setGroup] = useState(0);
   const [layout, setLayout] = useState<Layout | null>(null);
   const [chapterVisible, setChapterVisible] = useState(false);
-  const [turnFx, setTurnFx] = useState<{ id: number; dir: 1 | -1 } | null>(null);
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Two stacked page layers: the moving page pivots away while the destination
+  // page waits underneath. `frontIdx` is the layer showing the current page.
+  const layerRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)] as const;
+  const frameRefs = [useRef<HTMLIFrameElement>(null), useRef<HTMLIFrameElement>(null)] as const;
+  const glossRefs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)] as const;
+  const castRef = useRef<HTMLDivElement>(null);
+  const frontIdxRef = useRef(0);
+  const curlRunRef = useRef<CurlRun | null>(null);
+  const turningRef = useRef(false);
   const layoutRef = useRef<Layout | null>(null);
   const groupRef = useRef(0);
   const spineRef = useRef(0);
   const epubRef = useRef<EpubBook | null>(null);
   const navDirRef = useRef<1 | -1>(1);
-  const turnCounter = useRef(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastSaved = useRef<{ percent: number; location: EpubLocation } | null>(null);
   // Where to land once the incoming chapter is measured
@@ -213,24 +220,27 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   }, [epub, spineIndex, injectedCss, stageSize]);
 
   // ---------- measurement + positioning ----------
-  const applyGroup = useCallback((g: number, animate: boolean) => {
-    const doc = iframeRef.current?.contentDocument;
-    const root = doc?.getElementById('quire-root');
+  /** The layer currently showing the reader's page. */
+  const frontFrame = useCallback(() => frameRefs[frontIdxRef.current].current, [frameRefs]);
+
+  /** Park a layer's column strip on a page group. Always instant — the curl
+      provides the motion, so the strip itself never animates. */
+  const placeLayer = useCallback((layerIdx: number, g: number) => {
+    const root = frameRefs[layerIdx].current?.contentDocument?.getElementById('quire-root');
     const lay = layoutRef.current;
     if (!root || !lay) return;
     const sign = epubRef.current?.pageProgression === 'rtl' ? 1 : -1;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    root.style.transition = animate && !reduceMotion ? `transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)` : 'none';
+    root.style.transition = 'none';
     root.style.transform = `translateX(${sign * g * lay.stepW}px)`;
-    if (!animate) {
-      // force reflow so the next transition animates from here
-      void root.getBoundingClientRect();
-      root.style.transition = `transform ${TURN_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
-    }
-  }, []);
+  }, [frameRefs]);
+
+  /** Position the visible page without any turn animation. */
+  const applyGroup = useCallback((g: number) => {
+    placeLayer(frontIdxRef.current, g);
+  }, [placeLayer]);
 
   const measureAndPlace = useCallback(() => {
-    const iframe = iframeRef.current;
+    const iframe = frontFrame();
     const doc = iframe?.contentDocument;
     const root = doc?.getElementById('quire-root');
     if (!doc || !root || !stageSize) return;
@@ -279,7 +289,7 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }
     pendingTarget.current = {};
     setGroup(g);
-    applyGroup(g, false);
+    applyGroup(g);
     setChapterVisible(true);
     loadingChapterRef.current = false;
   }, [stageSize, settings.spread, applyGroup]);
@@ -299,12 +309,80 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
     }, 700);
   }, [bookMeta.id]);
 
+  /**
+   * Build the curl handle for a turn: parks the destination page on the other
+   * layer, decides which layer physically moves, and stacks them.
+   *
+   * Forward, the OUTGOING page peels away (progress 0 → 1). Backward, the
+   * INCOMING page unpeels back into place (progress 1 → 0) — the same physical
+   * motion played in reverse.
+   */
+  const beginTurn = useCallback((targetGroup: number, dir: 1 | -1) => {
+    const other = 1 - frontIdxRef.current;
+    const rtlBook = epubRef.current?.pageProgression === 'rtl';
+    placeLayer(other, targetGroup);
+
+    // Forward: current page moves, destination waits below.
+    // Backward: destination page moves (it is the one being uncovered).
+    const movingIdx = dir === 1 ? frontIdxRef.current : other;
+    const restingIdx = 1 - movingIdx;
+    const moving = layerRefs[movingIdx].current;
+    const resting = layerRefs[restingIdx].current;
+    const gloss = glossRefs[movingIdx].current;
+    const cast = castRef.current;
+    if (!moving || !resting || !gloss || !cast) return null;
+
+    resting.style.zIndex = '1';
+    const el = { page: moving, gloss, cast };
+    prepareCurl(el, !!rtlBook);
+    setCurlProgress(el, dir === 1 ? 0 : 1, !!rtlBook);
+
+    return {
+      el,
+      rtl: !!rtlBook,
+      from: dir === 1 ? 0 : 1,
+      to: dir === 1 ? 1 : 0,
+      /** Land the turn: swap which layer is front, reset the moving page. */
+      settle: () => {
+        clearCurl(el);
+        resting.style.zIndex = '';
+        frontIdxRef.current = other;
+        layerRefs[other].current!.style.zIndex = '2';
+        layerRefs[1 - other].current!.style.zIndex = '1';
+        turningRef.current = false;
+      },
+      /** Abandon the turn and leave the reader where it was. */
+      revert: () => {
+        clearCurl(el);
+        resting.style.zIndex = '';
+        turningRef.current = false;
+      },
+    };
+  }, [placeLayer, layerRefs, glossRefs]);
+
   const goToGroup = useCallback((g: number, dir: 1 | -1) => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    curlRunRef.current?.cancel();
+
+    if (reduceMotion) {
+      setGroup(g);
+      applyGroup(g);
+      scheduleSave();
+      return;
+    }
+
+    const turn = beginTurn(g, dir);
+    if (!turn) {
+      setGroup(g);
+      applyGroup(g);
+      scheduleSave();
+      return;
+    }
+    turningRef.current = true;
     setGroup(g);
-    applyGroup(g, true);
-    setTurnFx({ id: ++turnCounter.current, dir });
+    curlRunRef.current = runCurl(turn.el, turn.from, turn.to, TURN_MS, turn.rtl, turn.settle);
     scheduleSave();
-  }, [applyGroup, scheduleSave]);
+  }, [applyGroup, beginTurn, scheduleSave]);
 
   const next = useCallback(() => {
     const lay = layoutRef.current;
@@ -376,38 +454,18 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
   const jumpRef = useRef(jumpToHref); jumpRef.current = jumpToHref;
 
   // ---------- iframe wiring ----------
-  const onIframeLoad = useCallback(() => {
-    const iframe = iframeRef.current;
-    const doc = iframe?.contentDocument;
-    if (!doc) return;
+  /**
+   * Touch turns follow the finger: the page tracks the drag, then springs to
+   * completion or falls back depending on distance and flick speed.
+   */
+  const dragRef = useRef<{
+    x0: number; y0: number; t0: number;
+    axis: 'undecided' | 'horizontal' | 'vertical';
+    turn: ReturnType<typeof beginTurn> | null;
+    dir: 1 | -1;
+  } | null>(null);
 
-    measureAndPlace();
-
-    // Re-measure once fonts and images have settled (keeps the same group)
-    const remeasure = () => {
-      const lay = layoutRef.current;
-      if (!lay) return;
-      const t = lay.totalColumns <= lay.cols ? 0 : (groupRef.current * lay.cols) / lay.totalColumns;
-      pendingTarget.current = { fraction: t };
-      measureAndPlace();
-    };
-    doc.fonts?.ready?.then(() => remeasure()).catch(() => {});
-    doc.querySelectorAll('img').forEach((img) => {
-      if (!img.complete) img.addEventListener('load', remeasure, { once: true });
-    });
-
-    // Any native fragment scroll would shear the column grid — pin it to 0.
-    const pinScroll = () => {
-      if (doc.documentElement.scrollLeft || doc.body.scrollLeft || doc.documentElement.scrollTop || doc.body.scrollTop) {
-        doc.documentElement.scrollLeft = 0;
-        doc.body.scrollLeft = 0;
-        doc.documentElement.scrollTop = 0;
-        doc.body.scrollTop = 0;
-      }
-    };
-    doc.addEventListener('scroll', pinScroll, { passive: true });
-
-    // Input inside the sandboxed document
+  const wireFrameInput = useCallback((doc: Document) => {
     doc.addEventListener('click', (e) => {
       const anchor = (e.target as Element | null)?.closest?.('a[data-quire-href]');
       if (anchor) {
@@ -435,20 +493,89 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       else prevRef.current();
     }, { passive: true });
 
-    let touchX = 0, touchY = 0;
     doc.addEventListener('touchstart', (e) => {
-      touchX = e.touches[0].clientX;
-      touchY = e.touches[0].clientY;
+      if (turningRef.current) return;
+      dragRef.current = {
+        x0: e.touches[0].clientX,
+        y0: e.touches[0].clientY,
+        t0: performance.now(),
+        axis: 'undecided',
+        turn: null,
+        dir: 1,
+      };
     }, { passive: true });
-    doc.addEventListener('touchend', (e) => {
-      const dx = e.changedTouches[0].clientX - touchX;
-      const dy = e.changedTouches[0].clientY - touchY;
-      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-        const isRtl = epubRef.current?.pageProgression === 'rtl';
-        if (dx < 0) (isRtl ? prevRef : nextRef).current();
-        else (isRtl ? nextRef : prevRef).current();
+
+    doc.addEventListener('touchmove', (e) => {
+      const d = dragRef.current;
+      const lay = layoutRef.current;
+      const ep = epubRef.current;
+      if (!d || !lay || !ep) return;
+      const dx = e.touches[0].clientX - d.x0;
+      const dy = e.touches[0].clientY - d.y0;
+
+      if (d.axis === 'undecided') {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        d.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'horizontal' : 'vertical';
+        if (d.axis === 'vertical') return;
+
+        const isRtl = ep.pageProgression === 'rtl';
+        // Swiping left goes forward in LTR books, backward in RTL ones
+        const forward = isRtl ? dx > 0 : dx < 0;
+        d.dir = forward ? 1 : -1;
+        const target = forward ? groupRef.current + 1 : groupRef.current - 1;
+        // Chapter-boundary turns fall back to the normal path on release
+        if (target < 0 || target > lay.groups - 1) return;
+        curlRunRef.current?.cancel();
+        turningRef.current = true;
+        d.turn = beginTurn(target, d.dir);
       }
+
+      if (d.axis !== 'horizontal' || !d.turn) return;
+      const w = doc.documentElement.clientWidth || 1;
+      const travelled = Math.min(1, Math.abs(dx) / (w * 0.72));
+      // Forward runs 0 → 1, backward 1 → 0
+      setCurlProgress(d.turn.el, d.dir === 1 ? travelled : 1 - travelled, d.turn.rtl);
     }, { passive: true });
+
+    const endDrag = (e: TouchEvent) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      if (!d) return;
+
+      const dx = e.changedTouches[0].clientX - d.x0;
+      const dy = e.changedTouches[0].clientY - d.y0;
+
+      if (!d.turn) {
+        // No live curl (chapter boundary or a short flick): use the plain path
+        if (d.axis === 'horizontal' && Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+          const isRtl = epubRef.current?.pageProgression === 'rtl';
+          if (dx < 0) (isRtl ? prevRef : nextRef).current();
+          else (isRtl ? nextRef : prevRef).current();
+        }
+        turningRef.current = false;
+        return;
+      }
+
+      const w = doc.documentElement.clientWidth || 1;
+      const travelled = Math.min(1, Math.abs(dx) / (w * 0.72));
+      const velocity = Math.abs(dx) / Math.max(1, performance.now() - d.t0); // px/ms
+      const commit = travelled > 0.35 || velocity > 0.45;
+      const current = d.dir === 1 ? travelled : 1 - travelled;
+      const end = commit === (d.dir === 1) ? 1 : 0;
+      const remaining = Math.max(120, TURN_MS * Math.abs(end - current));
+
+      curlRunRef.current = runCurl(d.turn.el, current, end, remaining, d.turn.rtl, () => {
+        if (commit) {
+          d.turn!.settle();
+          setGroup(groupRef.current + d.dir);
+          scheduleSave();
+        } else {
+          d.turn!.revert();
+        }
+      });
+    };
+    doc.addEventListener('touchend', endDrag, { passive: true });
+    doc.addEventListener('touchcancel', endDrag, { passive: true });
 
     doc.addEventListener('keydown', (e) => {
       const ke = e as KeyboardEvent;
@@ -460,7 +587,63 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       }
       handleKey(ke, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl');
     });
-  }, [measureAndPlace]);
+
+    // Any native fragment scroll would shear the column grid — pin it to 0.
+    doc.addEventListener('scroll', () => {
+      if (doc.documentElement.scrollLeft || doc.body.scrollLeft || doc.documentElement.scrollTop || doc.body.scrollTop) {
+        doc.documentElement.scrollLeft = 0;
+        doc.body.scrollLeft = 0;
+        doc.documentElement.scrollTop = 0;
+        doc.body.scrollTop = 0;
+      }
+    }, { passive: true });
+  }, [beginTurn, scheduleSave]);
+
+  /**
+   * Both layers render the same chapter, so both need input wiring — either
+   * can be the visible page after a turn. Measurement happens once, from the
+   * layer that is currently in front.
+   */
+  const onFrameLoad = useCallback((layerIdx: number) => {
+    const iframe = frameRefs[layerIdx].current;
+    const doc = iframe?.contentDocument;
+    if (!doc) return;
+
+    if (layerIdx !== frontIdxRef.current) {
+      // Back layer: park it on the current page so it is ready to be revealed
+      placeLayer(layerIdx, groupRef.current);
+      wireFrameInput(doc);
+      return;
+    }
+
+    measureAndPlace();
+
+    // Re-measure once fonts and images have settled (keeps the same group)
+    const remeasure = () => {
+      const lay = layoutRef.current;
+      if (!lay) return;
+      const t = lay.totalColumns <= lay.cols ? 0 : (groupRef.current * lay.cols) / lay.totalColumns;
+      pendingTarget.current = { fraction: t };
+      measureAndPlace();
+    };
+    doc.fonts?.ready?.then(() => remeasure()).catch(() => {});
+    doc.querySelectorAll('img').forEach((img) => {
+      if (!img.complete) img.addEventListener('load', remeasure, { once: true });
+    });
+
+    // Any native fragment scroll would shear the column grid — pin it to 0.
+    const pinScroll = () => {
+      if (doc.documentElement.scrollLeft || doc.body.scrollLeft || doc.documentElement.scrollTop || doc.body.scrollTop) {
+        doc.documentElement.scrollLeft = 0;
+        doc.body.scrollLeft = 0;
+        doc.documentElement.scrollTop = 0;
+        doc.body.scrollTop = 0;
+      }
+    };
+    doc.addEventListener('scroll', pinScroll, { passive: true });
+
+    wireFrameInput(doc);
+  }, [measureAndPlace, placeLayer, frameRefs, wireFrameInput]);
 
   // Parent-level keyboard
   useEffect(() => {
@@ -554,21 +737,34 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       <div className="epub-stage" ref={stageRef} style={{ background: theme.bg }}>
         {!epub && <div className="reader-loading"><BookLoader /></div>}
         {epub && srcdoc && (
-          <motion.div
+          <div
             key={`${spineIndex}-${settings.spread}`}
-            className="epub-frame-wrap"
-            initial={{ opacity: 0, x: navDirRef.current * 26 }}
-            animate={{ opacity: chapterVisible ? 1 : 0, x: chapterVisible ? 0 : navDirRef.current * 26 }}
-            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+            className={`epub-frame-wrap ${chapterVisible ? 'is-visible' : ''}`}
           >
-            <iframe
-              ref={iframeRef}
-              title={bookMeta.title}
-              sandbox="allow-same-origin"
-              srcDoc={srcdoc}
-              onLoad={onIframeLoad}
-            />
-          </motion.div>
+            {/* Shadow the lifted page casts on the one beneath it */}
+            <div className="curl-cast" ref={castRef} aria-hidden />
+            {[0, 1].map((i) => (
+              <div
+                key={i}
+                className="page-layer"
+                ref={layerRefs[i]}
+                style={{ zIndex: i === 0 ? 2 : 1, background: theme.bg }}
+                // Only the visible page belongs to the accessibility tree
+                aria-hidden={i === 1 ? true : undefined}
+              >
+                <iframe
+                  ref={frameRefs[i]}
+                  title={i === 0 ? bookMeta.title : ''}
+                  sandbox="allow-same-origin"
+                  srcDoc={srcdoc}
+                  onLoad={() => onFrameLoad(i)}
+                  tabIndex={i === 1 ? -1 : undefined}
+                />
+                {/* Shading across the moving page's face as it rolls away */}
+                <div className="curl-gloss" ref={glossRefs[i]} aria-hidden />
+              </div>
+            ))}
+          </div>
         )}
         {geometry && (
           <>
@@ -578,20 +774,6 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
             <div className="page-mask" style={{ right: 0, width: geometry.padRight - 10, background: theme.bg }} aria-hidden />
           </>
         )}
-        <AnimatePresence>
-          {turnFx && (
-            <motion.div
-              key={turnFx.id}
-              className="turn-shadow"
-              initial={{ x: (rtl ? -turnFx.dir : turnFx.dir) === 1 ? '110%' : '-40%', opacity: 0.9 }}
-              animate={{ x: (rtl ? -turnFx.dir : turnFx.dir) === 1 ? '-40%' : '110%', opacity: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: TURN_MS / 1000 + 0.1, ease: [0.3, 0.6, 0.3, 1] }}
-              onAnimationComplete={() => setTurnFx(null)}
-              aria-hidden
-            />
-          )}
-        </AnimatePresence>
       </div>
     </ReaderShell>
   );
@@ -629,19 +811,24 @@ function useStageSize(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Set synchronously from the observer (rounding guards against subpixel
+    // re-render loops). Deferring through requestAnimationFrame would leave
+    // the reader blank in a backgrounded tab, where rAF never fires.
+    const update = (w: number, h: number) => {
+      setSize((prev) => {
+        const rw = Math.round(w);
+        const rh = Math.round(h);
+        if (prev && prev.w === rw && prev.h === rh) return prev;
+        return rw > 0 && rh > 0 ? { w: rw, h: rh } : prev;
+      });
+    };
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
-      // Debounce via rAF; round to avoid re-render loops on subpixels
-      requestAnimationFrame(() => {
-        setSize((prevSize) => {
-          const w = Math.round(r.width);
-          const h = Math.round(r.height);
-          if (prevSize && prevSize.w === w && prevSize.h === h) return prevSize;
-          return w > 0 && h > 0 ? { w, h } : prevSize;
-        });
-      });
+      update(r.width, r.height);
     });
     ro.observe(el);
+    const rect = el.getBoundingClientRect();
+    update(rect.width, rect.height);
     return () => ro.disconnect();
   }, [ref]);
   return size;

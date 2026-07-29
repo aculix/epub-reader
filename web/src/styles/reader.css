@@ -10,6 +10,9 @@
 .reader-stage-wrap {
   position: absolute;
   inset: 0;
+  /* Own stacking context: keeps the 3D-transformed turning page from painting
+     over the chrome bars, which sit above it. */
+  z-index: 0;
 }
 
 /* ---------- stages ---------- */
@@ -23,13 +26,61 @@
   transition: background-color 0.4s ease;
 }
 
-.epub-frame-wrap,
+/* Perspective lives on the wrapper so a turning page fans and slants like
+   paper instead of sliding flat. */
+.epub-frame-wrap {
+  position: absolute;
+  inset: 0;
+  perspective: 1800px;
+  perspective-origin: 50% 50%;
+  transform-style: preserve-3d;
+}
+
+.page-layer {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
 .epub-frame-wrap iframe {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   border: none;
+}
+
+/* Shading across the face of the moving page as it angles away */
+.curl-gloss {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    to left,
+    rgba(28, 18, 6, 0.42) 0%,
+    rgba(28, 18, 6, 0.16) 22%,
+    rgba(28, 18, 6, 0.04) 55%,
+    rgba(255, 255, 255, 0.16) 92%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+}
+
+/* Shadow the lifted page drops onto the page underneath */
+.curl-cast {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    to right,
+    rgba(20, 13, 4, 0.34) 0%,
+    rgba(20, 13, 4, 0.12) 18%,
+    transparent 46%
+  );
 }
 
 .page-mask {
@@ -610,4 +661,15 @@
 
 @media (max-width: 900px) {
   .page-edge-btn { display: none; }
+}
+
+/* Chapter reveal as a CSS transition, not a JS animation: a stalled rAF in a
+   backgrounded tab must never leave the page stuck half-faded. */
+.epub-frame-wrap {
+  opacity: 0;
+  transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.epub-frame-wrap.is-visible {
+  opacity: 1;
 }

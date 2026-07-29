@@ -384,18 +384,23 @@ function useStageSize(ref: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Set synchronously: deferring through rAF leaves the viewer blank in a
+    // backgrounded tab, where rAF never fires.
+    const update = (w: number, h: number) => {
+      setSize((prev) => {
+        const rw = Math.round(w);
+        const rh = Math.round(h);
+        if (prev && prev.w === rw && prev.h === rh) return prev;
+        return rw > 0 && rh > 0 ? { w: rw, h: rh } : prev;
+      });
+    };
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
-      requestAnimationFrame(() => {
-        setSize((prevSize) => {
-          const w = Math.round(r.width);
-          const h = Math.round(r.height);
-          if (prevSize && prevSize.w === w && prevSize.h === h) return prevSize;
-          return w > 0 && h > 0 ? { w, h } : prevSize;
-        });
-      });
+      update(r.width, r.height);
     });
     ro.observe(el);
+    const rect = el.getBoundingClientRect();
+    update(rect.width, rect.height);
     return () => ro.disconnect();
   }, [ref]);
   return size;
