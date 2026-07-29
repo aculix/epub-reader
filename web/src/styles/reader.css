@@ -26,24 +26,29 @@
   transition: background-color 0.4s ease;
 }
 
-/* Perspective lives on the wrapper so a turning page fans and slants like
-   paper instead of sliding flat. */
+/* No perspective: nothing rotates any more. The turn is a moving fold. */
 .epub-frame-wrap {
   position: absolute;
   inset: 0;
-  perspective: 2200px;
-  perspective-origin: 50% 50%;
 }
 
-/* Promoted up front so the turn is a pure compositor transform: creating the
-   layer mid-animation is what makes the first frames stutter.
-   Deliberately MINIMAL: `will-change` alone composites. Adding translateZ(0)
-   is redundant, and `contain: paint` clips nothing here (the only child is a
-   full-bleed iframe) while forcing an intermediate render surface around an
-   iframe subtree — which is what made slow turns flicker.
-   `backface-visibility` is applied per-turn by prepareCurl, so a resting page
-   never sits behind a culling test. */
+/* The page layer never transforms; only the clip window inside it sweeps. */
 .page-layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* The sweeping clip window. Its content is counter-translated by the same
+   amount, so text stays pinned to the viewport while only this edge moves —
+   the page is never re-rasterised and never leaves the screen. */
+.page-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.page-inner {
   position: absolute;
   inset: 0;
   will-change: transform;
@@ -57,43 +62,62 @@
   border: none;
 }
 
-/* Shading across the face of the moving page as it angles away.
-   Half-width: the gradient is spent well before the far edge, and a
-   full-viewport translucent layer costs real fill rate on every frame. */
-.curl-gloss {
+/* The turned-over portion of the sheet: the back of the paper, lying on the
+   part still flat on the surface. Scaled from its left edge, so its gradient
+   runs from the fold outward. */
+.turn-flap {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 55%;
-  z-index: 4;
+  inset: 0;
+  z-index: 5;
   pointer-events: none;
   opacity: 0;
-  will-change: opacity;
-  background: linear-gradient(
-    to left,
-    rgba(28, 18, 6, 0.42) 0%,
-    rgba(28, 18, 6, 0.16) 22%,
-    rgba(28, 18, 6, 0.04) 55%,
-    rgba(255, 255, 255, 0.16) 92%,
-    rgba(255, 255, 255, 0.3) 100%
+  display: none;
+  transform-origin: left center;
+  box-shadow: 0 0 22px rgba(20, 13, 4, 0.16);
+}
+
+/* Paper is never perfectly flat as it folds: a little shading toward the fold
+   and a bright edge where it catches the light. */
+.turn-flap[data-side='right'] {
+  background-image: linear-gradient(
+    to right,
+    rgba(20, 13, 4, 0.1) 0%,
+    rgba(20, 13, 4, 0.02) 40%,
+    rgba(255, 255, 255, 0.5) 97%,
+    rgba(255, 255, 255, 0.75) 100%
   );
 }
 
-/* Shadow the lifted page drops onto the page underneath */
-.curl-cast {
+.turn-flap[data-side='left'] {
+  background-image: linear-gradient(
+    to left,
+    rgba(20, 13, 4, 0.1) 0%,
+    rgba(20, 13, 4, 0.02) 40%,
+    rgba(255, 255, 255, 0.5) 97%,
+    rgba(255, 255, 255, 0.75) 100%
+  );
+}
+
+/* Shadow the fold drops on the freshly uncovered page */
+.turn-shade {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 50%;
-  /* Between the resting page (1) and the moving page (3), or it is invisible */
-  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 64px;
+  z-index: 4;
   pointer-events: none;
   opacity: 0;
-  will-change: opacity;
-  background: linear-gradient(
-    to right,
-    rgba(20, 13, 4, 0.34) 0%,
-    rgba(20, 13, 4, 0.12) 18%,
-    transparent 46%
-  );
+  display: none;
+  will-change: transform, opacity;
+}
+
+.turn-shade[data-side='right'] {
+  background-image: linear-gradient(to right, rgba(20, 13, 4, 0.3), transparent);
+}
+
+.turn-shade[data-side='left'] {
+  background-image: linear-gradient(to left, rgba(20, 13, 4, 0.3), transparent);
 }
 
 .page-mask {
