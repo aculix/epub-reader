@@ -446,7 +446,16 @@ export default function EpubReader({ book: bookMeta }: { book: Book }) {
       }
     }, { passive: true });
 
-    doc.addEventListener('keydown', (e) => handleKey(e as KeyboardEvent, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl'));
+    doc.addEventListener('keydown', (e) => {
+      const ke = e as KeyboardEvent;
+      if (ke.key === 'Escape') {
+        // Keyboard focus lives in the iframe after a center tap; forward Esc
+        // to the parent so ReaderShell's panel/focus-mode logic runs.
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        return;
+      }
+      handleKey(ke, nextRef.current, prevRef.current, epubRef.current?.pageProgression === 'rtl');
+    });
   }, [measureAndPlace]);
 
   // Parent-level keyboard

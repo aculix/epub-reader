@@ -177,6 +177,24 @@
   padding: 0 22px 10px;
 }
 
+/* When the stage scrolls content beneath the bars (zoomed PDF), give them a
+   backdrop in the reading surface's own color so they stay legible. */
+.chrome-backdrop .reader-top {
+  background: linear-gradient(
+    var(--reader-bg),
+    color-mix(in srgb, var(--reader-bg) 80%, transparent) 62%,
+    transparent
+  );
+}
+
+.chrome-backdrop .reader-bottom {
+  background: linear-gradient(
+    transparent,
+    color-mix(in srgb, var(--reader-bg) 80%, transparent) 38%,
+    var(--reader-bg)
+  );
+}
+
 .hidden-bar {
   opacity: 0;
   pointer-events: none;

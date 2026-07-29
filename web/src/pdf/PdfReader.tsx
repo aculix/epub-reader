@@ -229,6 +229,7 @@ export default function PdfReader({ book: bookMeta }: { book: Book }) {
       stageBackground={stageTheme.stage}
       chromeDark={stageTheme.chromeDark}
       themeVars={READER_THEMES[settings.theme === 'dusk' ? 'dusk' : 'paper'].vars}
+      scrollsUnderChrome={zoom > 1}
       settingsPanel={
         <div className="settings-panel">
           <div className="settings-row">
