@@ -88,7 +88,11 @@ const KEY = 'quire:reader-settings';
 export function useReaderSettings(): [ReaderSettings, (patch: Partial<ReaderSettings>) => void] {
   const [settings, setSettings] = useState<ReaderSettings>(() => {
     try {
-      return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+      const stored = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<ReaderSettings> & { v?: number };
+      // A briefly-shipped build stored theme:'auto'; map it back to paper
+      if ((stored.theme as string) === 'auto') stored.theme = 'paper';
+      delete stored.v;
+      return { ...DEFAULTS, ...stored };
     } catch {
       return DEFAULTS;
     }

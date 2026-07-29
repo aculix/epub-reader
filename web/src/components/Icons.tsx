@@ -18,17 +18,6 @@ export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.2-3.2" /></svg>
 );
 
-export const IconSun = (p: SVGProps<SVGSVGElement>) => (
-  <svg {...base(p)}>
-    <circle cx="12" cy="12" r="4.2" />
-    <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M18.7 5.3l-1.5 1.5M6.8 17.2l-1.5 1.5" />
-  </svg>
-);
-
-export const IconMoon = (p: SVGProps<SVGSVGElement>) => (
-  <svg {...base(p)}><path d="M20.4 14.2A8.5 8.5 0 0 1 9.8 3.6a8.5 8.5 0 1 0 10.6 10.6Z" /></svg>
-);
-
 export const IconDots = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)} fill="currentColor" stroke="none">
     <circle cx="12" cy="5.5" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="12" cy="18.5" r="1.7" />

@@ -774,10 +774,6 @@
   backdrop-filter: blur(10px);
 }
 
-[data-theme='dark'] .modal-backdrop {
-  background: rgba(0, 0, 0, 0.6);
-}
-
 .detail-modal {
   position: relative;
   display: flex;

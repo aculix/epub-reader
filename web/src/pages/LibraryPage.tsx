@@ -1,21 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api, type Book } from '../lib/api';
-import { useThemeContext } from '../lib/theme';
 import { useUploads } from '../components/library/useUploads';
 import BookCard from '../components/library/BookCard';
 import UploadCard from '../components/library/UploadCard';
 import BookDetailModal from '../components/library/BookDetailModal';
 import ContinueReading from '../components/library/ContinueReading';
 import DropOverlay from '../components/library/DropOverlay';
-import { IconMoon, IconPlus, IconSearch, IconSun, IconBook } from '../components/Icons';
+import { IconPlus, IconSearch, IconBook } from '../components/Icons';
 import '../styles/library.css';
 
 type FormatFilter = 'all' | 'epub' | 'pdf';
 type Sort = 'recent' | 'title' | 'author';
 
 export default function LibraryPage() {
-  const [theme, toggleTheme] = useThemeContext();
   const [books, setBooks] = useState<Book[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -158,9 +156,6 @@ export default function LibraryPage() {
           </div>
 
           <div className="lib-header-actions">
-            <button className="icon-btn" onClick={toggleTheme} aria-label="Toggle theme">
-              {theme === 'light' ? <IconMoon /> : <IconSun />}
-            </button>
             <button className="btn btn-primary" onClick={() => fileInput.current?.click()}>
               <IconPlus style={{ width: 17, height: 17 }} /> Add books
             </button>
