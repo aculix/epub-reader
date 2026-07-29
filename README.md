@@ -65,3 +65,7 @@ web/             React + Vite + TypeScript
 ```
 
 Book files are stored as `/data/books/<id>.<ext>`, covers as `/data/covers/<id>.<ext>`, metadata and reading progress in `/data/quire.db` (SQLite, WAL mode).
+
+## License
+
+[MIT](LICENSE) © Aculix Technologies
